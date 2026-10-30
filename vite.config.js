@@ -10,9 +10,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules') && id.includes('prismjs')) {
-            return 'vendor-prism';
-          }
           if (id.includes('node_modules') && (id.includes('react') || id.includes('react-dom'))) {
             return 'vendor-react';
           }

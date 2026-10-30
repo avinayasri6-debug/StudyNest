@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-python';
+import { highlightPython } from '../services/prismHelper';
 import {
   IconPlay,
   IconStop,
@@ -90,11 +89,7 @@ export default function PythonCodeEditor({
     }
   };
 
-  const highlightedHtml = Prism.highlight(
-    code || '# Write Python code here',
-    Prism.languages.python,
-    'python'
-  );
+  const highlightedHtml = highlightPython(code);
 
   const isReady = runtimeStatus.status === 'ready';
   const isInitializing = runtimeStatus.status === 'loading';

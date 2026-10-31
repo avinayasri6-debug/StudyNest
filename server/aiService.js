@@ -204,13 +204,18 @@ You must understand the student's question type and calibrate your answer struct
    - State the physical conditions of validity (e.g. normal incidence, reflected light, medium refractive index).
 
 4. DIAGRAMS & SVG REQUESTS (e.g., "Draw an SVG diagram...", "Show diagram of...", "Draw schematic..."):
-   - When a student asks for a diagram or SVG, you MUST output a complete, valid, self-contained SVG element inside a \`\`\`svg code block.
-   - NEVER say "Here is a diagram" or describe a diagram in text without generating the actual SVG code!
-   - Ensure the SVG:
-     * Has proper attributes: \`viewBox="0 0 650 360"\` and \`xmlns="http://www.w3.org/2000/svg"\`.
-     * Uses clean, high-contrast, modern styling with legible sans-serif fonts (\`font-size="12px"\` or \`"13px"\`).
-     * Accurately draws and clearly labels all essential physical components with arrows and text (for example, in Newton's Rings: Plano-Convex Lens of large radius R, Optically Flat Glass Plate, Wedge-shaped Air Film, Point of Contact O where t=0, Incident Monochromatic Light Ray, Reflected Rays from bottom of lens and top of glass plate showing interference, and an inset circular interference ring pattern with alternate dark and bright rings and a central dark spot).
-     * Has all tags properly closed (\`</svg>\`).
+   - When a student asks for a diagram or SVG, you MUST output a complete, valid, self-contained SVG element.
+   - Output the <svg ...>...</svg> directly without unnecessary Markdown code fences unless explicitly requested for raw code.
+   - Use clean, concise SVG markup without bloated comments or redundant decorative elements so the diagram finishes completely within token limits.
+   - MANDATORY REQUIREMENTS:
+     * Standard root attributes: \`viewBox="0 0 650 360" xmlns="http://www.w3.org/2000/svg" width="100%" height="auto"\`.
+     * Explicitly close EVERY tag, especially the root \`</svg>\`, container groups \`</g>\`, \`<defs>\`, and \`<marker>\`. Self-closing tags MUST end with \`/>\`.
+     * Use high-contrast modern engineering styling with readable sans-serif labels (\`font-size="11px"\` to \`"13px"\`).
+     * Accurately render and clearly label key components with pointers/arrows:
+       - Newton's Rings: Plano-convex lens (flat top, curved bottom), flat glass plate, wedge-shaped air film (thickness t), point of contact O (t=0), incident ray, reflected interfering rays, and inset circular interference ring pattern with alternate dark and bright rings and a central dark spot.
+       - Simple Pendulum: Rigid hatched support, suspension point S, vertical dashed equilibrium reference, displaced string of length L at angle θ, bob of mass m, tension vector T, gravity mg, restoring tangential component mg sin θ, radial component mg cos θ, and arc of oscillation.
+       - Convex Lens Ray Diagram: Horizontal principal axis, biconvex lens with optical center O, focal points F1, 2F1 on left and F2, 2F2 on right, upright object arrow AB beyond 2F1, parallel ray refracting through F2, optical center ray passing undeflected through O, and real inverted diminished image arrow A'B'.
+   - Immediately follow the SVG with a concise bulleted legend explaining the key physical components.
 
 5. NUMERICAL PROBLEMS:
    - 1. Given Data with standard SI units.
@@ -234,6 +239,87 @@ You must understand the student's question type and calibrate your answer struct
  */
 const OVERALL_REQUEST_DEADLINE_MS = 57000; // 57 seconds total shared request budget
 const PRIMARY_ATTEMPT_MAX_TIMEOUT_MS = 15000; // 15 seconds maximum for primary Gemini attempt
+
+/**
+ * Validate SVG completeness and syntactic well-formedness
+ * Checks for opening <svg and closing </svg> tags, attribute quote parity, and container tag balance.
+ */
+export function validateSvgCompleteness(content) {
+  if (!content || typeof content !== 'string') {
+    return { hasSvg: false, isComplete: true };
+  }
+
+  const svgOpenIdx = content.search(/<svg[\s>]/i);
+  if (svgOpenIdx === -1) {
+    return { hasSvg: false, isComplete: true };
+  }
+
+  const svgCloseIdx = content.toLowerCase().lastIndexOf('</svg>');
+  if (svgCloseIdx === -1) {
+    return {
+      hasSvg: true,
+      isComplete: false,
+      reason: 'Missing closing </svg> tag (SVG diagram was cut off during generation).'
+    };
+  }
+
+  // Extract from the first <svg to the end of the last </svg>
+  const svgSlice = content.slice(svgOpenIdx, svgCloseIdx + 6);
+
+  // Strip XML comments before checking quote parity and tags to avoid comment noise
+  const decommented = svgSlice.replace(/<!--[\s\S]*?-->/g, '');
+
+  // Check double quote parity across attributes
+  const doubleQuotes = (decommented.match(/"/g) || []).length;
+  if (doubleQuotes % 2 !== 0) {
+    return {
+      hasSvg: true,
+      isComplete: false,
+      reason: 'Unmatched attribute quotes (dangling quote) detected inside SVG markup.'
+    };
+  }
+
+  // Tag stack / balance check for SVG container elements
+  const containerTags = new Set(['svg', 'g', 'defs', 'marker', 'lineargradient', 'radialgradient', 'pattern', 'mask']);
+  const tagCounts = {};
+  for (const tag of containerTags) {
+    tagCounts[tag] = { open: 0, close: 0 };
+  }
+
+  const tagRegex = /<(\/)?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g;
+  let match;
+  while ((match = tagRegex.exec(decommented)) !== null) {
+    const isClosing = Boolean(match[1]);
+    const tagName = match[2].toLowerCase();
+    const attrs = match[3] || '';
+    const isSelfClosing = attrs.trim().endsWith('/');
+
+    if (containerTags.has(tagName)) {
+      if (isClosing) {
+        tagCounts[tagName].close++;
+      } else if (!isSelfClosing) {
+        tagCounts[tagName].open++;
+      }
+    }
+  }
+
+  for (const tag of containerTags) {
+    const { open, close } = tagCounts[tag];
+    if (open !== close) {
+      return {
+        hasSvg: true,
+        isComplete: false,
+        reason: `Mismatched container tags: <${tag}> opened ${open} time(s) but closed ${close} time(s).`
+      };
+    }
+  }
+
+  return {
+    hasSvg: true,
+    isComplete: true,
+    svgBlock: svgSlice
+  };
+}
 
 /**
  * Call Google Gemini API with shared overall deadline and resilient fallback
@@ -291,7 +377,7 @@ async function callGemini({
     },
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 3000
+      maxOutputTokens: 8192
     }
   };
 
@@ -621,12 +707,14 @@ $$(A - 5I)v = \\begin{pmatrix} -1 & 1 \\\\ 1 & -1 \\end{pmatrix}\\begin{pmatrix}
 - **Principal Component Analysis (PCA):** Reducing dimensional complexity of sensor datasets in Machine Learning.
 - **Structural Dynamics:** Natural resonant frequencies in bridge and aircraft wing vibrations.`;
   }
-  // 3. Engineering Physics & Newton's Rings Specialized Pedagogical Engine
+  // 3. Engineering Physics & Specialized Optical / Mechanics Pedagogical Engine
   else if (
     subId === 'phy102' ||
     q.includes('newton') ||
     q.includes('ring') ||
     q.includes('physics') ||
+    q.includes('pendulum') ||
+    q.includes('lens') ||
     q.includes('laser') ||
     q.includes('quantum') ||
     q.includes('optic') ||
@@ -681,7 +769,6 @@ Here is the complete engineering schematic diagram of the Newton's Rings optical
     <text x="155" y="42" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#059669">Ray 2 (Top of Plate)</text>
 
     <!-- Plano-Convex Lens (Flat Top, Curved Bottom) -->
-    <!-- Top flat face: (30, 95) to (310, 95), bottom curved face meeting plate at (170, 160) -->
     <path d="M 30,95 L 310,95 Q 170,225 30,95 Z" fill="url(#lensGrad)" stroke="#2563eb" stroke-width="2"/>
     <text x="170" y="112" font-family="sans-serif" font-size="12" font-weight="600" fill="#1e3a8a" text-anchor="middle">
       Plano-Convex Lens (Radius R)
@@ -764,6 +851,271 @@ Here is the complete engineering schematic diagram of the Newton's Rings optical
 3. **Wedge-Shaped Air Film:** The thickness $t$ increases symmetrically outward from the center.
 4. **Point of Contact $O$:** Where $t = 0$, giving a central dark fringe.
 5. **Two Interfering Beams:** Ray 1 (reflected from bottom of lens) and Ray 2 (reflected from top of plate) produce division of amplitude.`;
+    }
+    // 3B. Simple Pendulum SVG Diagram Request
+    else if (
+      (q.includes('pendulum') || (q.includes('simple') && q.includes('bob'))) &&
+      (q.includes('svg') || q.includes('diagram') || q.includes('draw') || q.includes('schematic') || q.includes('show') || q.includes('oscillation'))
+    ) {
+      responseBody = `### Simple Pendulum: Oscillation & Restoring Force Schematic
+
+Here is the complete engineering schematic diagram of a simple pendulum, illustrating the rigid ceiling support, suspended thread of length $L$, bob of mass $m$, angular displacement $\\theta$, weight resolution ($mg\\sin\\theta$ and $mg\\cos\\theta$), and string tension $T$.
+
+\`\`\`svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 360" width="100%" height="auto">
+  <defs>
+    <linearGradient id="bobGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="supportGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#64748b"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+    <marker id="arrowHead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#ef4444"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowEmerald" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#10b981"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="650" height="360" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+
+  <g transform="translate(15, 15)">
+    <text x="180" y="22" font-family="sans-serif" font-size="14" font-weight="700" fill="#0f172a" text-anchor="middle">
+      Simple Pendulum: Oscillation &amp; Restoring Force
+    </text>
+
+    <rect x="70" y="32" width="220" height="12" rx="2" fill="url(#supportGrad)" stroke="#1e293b" stroke-width="1.5"/>
+    <line x1="80" y1="32" x2="90" y2="24" stroke="#64748b" stroke-width="1.5"/>
+    <line x1="110" y1="32" x2="120" y2="24" stroke="#64748b" stroke-width="1.5"/>
+    <line x1="140" y1="32" x2="150" y2="24" stroke="#64748b" stroke-width="1.5"/>
+    <line x1="170" y1="32" x2="180" y2="24" stroke="#64748b" stroke-width="1.5"/>
+    <line x1="200" y1="32" x2="210" y2="24" stroke="#64748b" stroke-width="1.5"/>
+    <line x1="230" y1="32" x2="240" y2="24" stroke="#64748b" stroke-width="1.5"/>
+    <line x1="260" y1="32" x2="270" y2="24" stroke="#64748b" stroke-width="1.5"/>
+    <text x="180" y="20" font-family="sans-serif" font-size="10" font-weight="600" fill="#64748b" text-anchor="middle">Rigid Support</text>
+
+    <circle cx="180" cy="44" r="4.5" fill="#0f172a"/>
+    <text x="165" y="52" font-family="sans-serif" font-size="11" font-weight="700" fill="#0f172a">S</text>
+
+    <line x1="180" y1="44" x2="180" y2="230" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,4"/>
+    <circle cx="180" cy="230" r="16" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3,3"/>
+    <text x="180" y="260" font-family="sans-serif" font-size="11" font-weight="600" fill="#64748b" text-anchor="middle">Mean Position (x = 0)</text>
+
+    <line x1="180" y1="44" x2="270" y2="205" stroke="#1e293b" stroke-width="2.5"/>
+    <text x="215" y="115" font-family="sans-serif" font-size="12" font-weight="700" fill="#1e293b">L</text>
+
+    <path d="M 180,95 A 50 50 0 0 1 202,90" fill="none" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="195" y="80" font-family="sans-serif" font-size="12" font-weight="700" fill="#2563eb">θ</text>
+
+    <circle cx="270" cy="205" r="16" fill="url(#bobGrad)" stroke="#1d4ed8" stroke-width="2"/>
+    <text x="270" y="210" font-family="sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">m</text>
+
+    <line x1="270" y1="205" x2="225" y2="125" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrowBlue)"/>
+    <text x="215" y="145" font-family="sans-serif" font-size="12" font-weight="700" fill="#2563eb">T</text>
+
+    <line x1="270" y1="205" x2="270" y2="295" stroke="#ef4444" stroke-width="2.5" marker-end="url(#arrowHead)"/>
+    <text x="278" y="290" font-family="sans-serif" font-size="12" font-weight="700" fill="#ef4444">mg</text>
+
+    <line x1="270" y1="205" x2="315" y2="285" stroke="#64748b" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrowHead)"/>
+    <text x="320" y="280" font-family="sans-serif" font-size="11" font-weight="600" fill="#64748b">mg cos θ</text>
+
+    <line x1="270" y1="205" x2="205" y2="241" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrowEmerald)"/>
+    <text x="175" y="222" font-family="sans-serif" font-size="11" font-weight="700" fill="#059669">F = -mg sin θ</text>
+
+    <path d="M 160,233 Q 180,235 270,205" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3,3"/>
+    <text x="225" y="248" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#d97706" text-anchor="middle">Displacement x</text>
+  </g>
+
+  <line x1="380" y1="20" x2="380" y2="340" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+
+  <g transform="translate(400, 25)">
+    <text x="115" y="20" font-family="sans-serif" font-size="14" font-weight="700" fill="#0f172a" text-anchor="middle">
+      Physics Summary &amp; Formulas
+    </text>
+
+    <rect x="0" y="40" width="230" height="70" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+    <text x="115" y="65" font-family="sans-serif" font-size="13" font-weight="700" fill="#1e40af" text-anchor="middle">
+      T = 2π √(L / g)
+    </text>
+    <text x="115" y="85" font-family="sans-serif" font-size="10.5" fill="#3b82f6" text-anchor="middle">
+      Time Period of Oscillation
+    </text>
+    <text x="115" y="100" font-family="sans-serif" font-size="9.5" fill="#64748b" text-anchor="middle">
+      (Independent of bob mass m)
+    </text>
+
+    <rect x="0" y="125" width="230" height="65" rx="6" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+    <text x="115" y="150" font-family="sans-serif" font-size="12" font-weight="700" fill="#15803d" text-anchor="middle">
+      F_restoring = - (mg / L) · x
+    </text>
+    <text x="115" y="170" font-family="sans-serif" font-size="10" fill="#16a34a" text-anchor="middle">
+      For small angular displacement (sin θ ≈ θ)
+    </text>
+
+    <rect x="0" y="205" width="230" height="115" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+    <text x="15" y="228" font-family="sans-serif" font-size="11" font-weight="700" fill="#0f172a">Key Exam Insights:</text>
+    <text x="15" y="250" font-family="sans-serif" font-size="10.5" fill="#334155">• Motion is SHM for small θ (&lt; 10°)</text>
+    <text x="15" y="270" font-family="sans-serif" font-size="10.5" fill="#334155">• Restoring force provided by mg sin θ</text>
+    <text x="15" y="290" font-family="sans-serif" font-size="10.5" fill="#334155">• Frequency f = (1 / 2π) √(g / L)</text>
+    <text x="15" y="310" font-family="sans-serif" font-size="10.5" fill="#334155">• Tension maximum at mean position</text>
+  </g>
+</svg>
+\`\`\`
+
+#### Key Components Shown in the Diagram:
+1. **Rigid Support ($S$):** Firm pivot from which the inextensible thread of length $L$ hangs.
+2. **Mean Position ($x = 0$):** Vertical equilibrium position where gravity balances tension.
+3. **Displaced Position ($\theta$):** Angular deviation $\theta$ from the vertical.
+4. **Forces Acting on Bob:**
+   - **Tension ($T$):** Acts along the suspension string towards pivot $S$.
+   - **Weight ($mg$):** Acts vertically downward.
+   - **Restoring Component ($F = -mg\\sin\\theta$):** Tangential force directed towards the mean position.
+   - **Radial Component ($mg\\cos\\theta$):** Balances tension at turning points.`;
+    }
+    // 3C. Convex Lens Ray Diagram Request
+    else if (
+      (q.includes('convex') || q.includes('lens')) &&
+      (q.includes('svg') || q.includes('diagram') || q.includes('draw') || q.includes('ray') || q.includes('schematic') || q.includes('image'))
+    ) {
+      responseBody = `### Convex Lens: Ray Optics Schematic (Object Beyond 2F₁)
+
+Here is the complete ray optics schematic diagram for a convex lens with an object placed beyond $2F_1$, illustrating the principal axis, optical center $O$, principal foci $F_1, F_2, 2F_1, 2F_2$, principal rays, and the formation of a real, inverted, diminished image $A'B'$.
+
+\`\`\`svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 360" width="100%" height="auto">
+  <defs>
+    <linearGradient id="lensGlass" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#0284c7" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.3"/>
+    </linearGradient>
+    <marker id="rayArrowRed" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#dc2626"/>
+    </marker>
+    <marker id="rayArrowBlue" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="objArrow" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#15803d"/>
+    </marker>
+    <marker id="imgArrow" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#b91c1c"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="650" height="360" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+
+  <text x="325" y="28" font-family="sans-serif" font-size="14" font-weight="700" fill="#0f172a" text-anchor="middle">
+    Convex Lens: Ray Diagram (Object Beyond 2F₁)
+  </text>
+
+  <line x1="20" y1="180" x2="630" y2="180" stroke="#475569" stroke-width="1.8"/>
+  <text x="620" y="172" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#64748b">Principal Axis</text>
+
+  <path d="M 325,45 C 348,95 348,265 325,315 C 302,265 302,95 325,45 Z" fill="url(#lensGlass)" stroke="#0284c7" stroke-width="2"/>
+  <line x1="325" y1="35" x2="325" y2="325" stroke="#0284c7" stroke-width="1" stroke-dasharray="4,3"/>
+
+  <circle cx="325" cy="180" r="3.5" fill="#0f172a"/>
+  <text x="320" y="198" font-family="sans-serif" font-size="12" font-weight="700" fill="#0f172a">O</text>
+
+  <line x1="225" y1="175" x2="225" y2="185" stroke="#0f172a" stroke-width="2"/>
+  <circle cx="225" cy="180" r="2.5" fill="#0f172a"/>
+  <text x="225" y="200" font-family="sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">F₁</text>
+
+  <line x1="125" y1="175" x2="125" y2="185" stroke="#0f172a" stroke-width="2"/>
+  <circle cx="125" cy="180" r="2.5" fill="#0f172a"/>
+  <text x="125" y="200" font-family="sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">2F₁</text>
+
+  <line x1="425" y1="175" x2="425" y2="185" stroke="#0f172a" stroke-width="2"/>
+  <circle cx="425" cy="180" r="2.5" fill="#0f172a"/>
+  <text x="425" y="200" font-family="sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">F₂</text>
+
+  <line x1="525" y1="175" x2="525" y2="185" stroke="#0f172a" stroke-width="2"/>
+  <circle cx="525" cy="180" r="2.5" fill="#0f172a"/>
+  <text x="525" y="200" font-family="sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">2F₂</text>
+
+  <line x1="75" y1="180" x2="75" y2="108" stroke="#15803d" stroke-width="3" marker-end="url(#objArrow)"/>
+  <text x="75" y="98" font-family="sans-serif" font-size="12" font-weight="700" fill="#15803d" text-anchor="middle">A</text>
+  <text x="75" y="196" font-family="sans-serif" font-size="12" font-weight="700" fill="#15803d" text-anchor="middle">B</text>
+  <text x="50" y="145" font-family="sans-serif" font-size="11" font-weight="600" fill="#15803d">Object</text>
+
+  <line x1="75" y1="105" x2="210" y2="105" stroke="#dc2626" stroke-width="2" marker-end="url(#rayArrowRed)"/>
+  <line x1="205" y1="105" x2="325" y2="105" stroke="#dc2626" stroke-width="2"/>
+  <line x1="325" y1="105" x2="435" y2="188" stroke="#dc2626" stroke-width="2" marker-end="url(#rayArrowRed)"/>
+  <line x1="430" y1="184" x2="520" y2="251" stroke="#dc2626" stroke-width="2"/>
+
+  <line x1="75" y1="105" x2="220" y2="148" stroke="#2563eb" stroke-width="2" marker-end="url(#rayArrowBlue)"/>
+  <line x1="215" y1="147" x2="325" y2="180" stroke="#2563eb" stroke-width="2"/>
+  <line x1="325" y1="180" x2="445" y2="216" stroke="#2563eb" stroke-width="2" marker-end="url(#rayArrowBlue)"/>
+  <line x1="440" y1="214" x2="520" y2="238" stroke="#2563eb" stroke-width="2"/>
+
+  <line x1="475" y1="180" x2="475" y2="222" stroke="#b91c1c" stroke-width="3" marker-end="url(#imgArrow)"/>
+  <text x="475" y="172" font-family="sans-serif" font-size="12" font-weight="700" fill="#b91c1c" text-anchor="middle">B'</text>
+  <text x="475" y="240" font-family="sans-serif" font-size="12" font-weight="700" fill="#b91c1c" text-anchor="middle">A'</text>
+  <text x="495" y="210" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#b91c1c">Image (Real, Inverted)</text>
+
+  <rect x="25" y="285" width="600" height="60" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.2"/>
+  <text x="45" y="308" font-family="sans-serif" font-size="12" font-weight="700" fill="#1e40af">Lens Formula: 1/f = 1/v - 1/u</text>
+  <text x="45" y="330" font-family="sans-serif" font-size="11" fill="#1e3a8a">Linear Magnification: m = v / u = h_i / h_o (where |m| &lt; 1 gives diminished image)</text>
+  <text x="410" y="308" font-family="sans-serif" font-size="11" font-weight="600" fill="#0369a1">• Position: Between F₂ and 2F₂</text>
+  <text x="410" y="330" font-family="sans-serif" font-size="11" font-weight="600" fill="#0369a1">• Nature: Real, Inverted &amp; Diminished</text>
+</svg>
+\`\`\`
+
+#### Key Components Shown in the Diagram:
+1. **Principal Axis:** Horizontal line passing through the optical center $O$ and focal points.
+2. **Optical Center ($O$):** Central point where incident rays pass undeflected without angular deviation.
+3. **Object ($AB$):** Upright object situated beyond $2F_1$.
+4. **Ray 1 (Red):** Travelled parallel to principal axis, refracting through principal focus $F_2$.
+5. **Ray 2 (Blue):** Travelled through optical center $O$, emerging straight without bending.
+6. **Image ($A'B'$):** Formed at the intersection between $F_2$ and $2F_2$. The image is **real, inverted, and diminished**.`;
+    }
+    // 3D. Simple Pendulum Concept & Formula
+    else if (q.includes('pendulum')) {
+      responseBody = `### 1. Simple Definition
+A simple pendulum consists of a point mass (called the **bob**) suspended from a rigid support by a light, inextensible, and flexible string of length $L$, which oscillates freely under the influence of gravity.
+
+### 2. How It Works
+When the bob is pulled aside by a small angle $\\theta$ and released, gravity ($mg$) pulls it back toward the central equilibrium position. The tangential component of gravity ($F = -mg\\sin\\theta$) acts as the **restoring force**. For small angles ($\\theta < 10^\\circ$), $\\sin\\theta \\approx \\theta = \\frac{x}{L}$, making the restoring force directly proportional to displacement ($F \\propto -x$). This satisfies the condition for **Simple Harmonic Motion (SHM)**.
+
+### 3. Governing Formula & Variable Breakdown
+The time period $T$ of a simple pendulum is given by:
+
+$$T = 2\\pi \\sqrt{\\frac{L}{g}}$$
+
+- $T$ = Time period for one complete oscillation, measured in **seconds** ($\\text{s}$).
+- $L$ = Effective length of pendulum from suspension point to center of gravity of bob, in **meters** ($\\text{m}$).
+- $g$ = Acceleration due to gravity ($9.81 \\text{ m/s}^2$).
+
+### 4. Important Point to Remember
+The time period $T$ is **completely independent of the mass $m$** of the bob and independent of amplitude for small angles (isochronism). A pendulum with a heavier bob will swing with the exact same period as a lighter bob of identical length!`;
+    }
+    // 3E. Convex Lens Concept & Formula
+    else if (q.includes('convex') || (q.includes('lens') && !q.includes('newton') && !q.includes('ring'))) {
+      responseBody = `### 1. Simple Definition
+A convex lens (or converging lens) is a transparent optical element that is thicker at the center than at its edges, causing parallel incident light rays to refract inward and converge at a single focal point $F$.
+
+### 2. How It Works
+When light enters the curved glass surface, it refracts toward the normal upon entering the denser medium, and refracts away from the normal upon exiting into air. Because of the curvature, rays striking the top and bottom of the lens bend inward toward the central principal axis, intersecting at the principal focus.
+
+### 3. Governing Lens Formula & Sign Convention
+The relationship between focal length $f$, object distance $u$, and image distance $v$ is given by the Gaussian Lens Formula:
+
+$$\\frac{1}{f} = \\frac{1}{v} - \\frac{1}{u}$$
+
+- $f$ = Focal length of the lens, in **meters** ($\\text{m}$) (Always **positive** for convex lenses).
+- $u$ = Distance of object from optical center $O$, in **meters** ($\\text{m}$) (Always **negative** under Cartesian convention).
+- $v$ = Distance of image from optical center $O$, in **meters** ($\\text{m}$) (Positive for real images formed on the opposite side).
+- $m = \\frac{v}{u} = \\frac{h_i}{h_o}$ = Linear magnification.
+
+### 4. Important Point to Remember
+When an object is placed **beyond $F$**, a convex lens always forms a **real and inverted** image. However, when an object is placed closer than the focal point (between $F$ and optical center $O$), it acts as a simple magnifying glass, forming a **virtual, erect, and magnified** image on the same side as the object.`;
     }
     // 3B. Newton's Rings Dark Rings Formula Request
     else if (
@@ -1022,9 +1374,10 @@ To master this topic in **${subTitle}**, break the problem down into its fundame
 export async function processChatRequest({ messages, subject, mode = 'intermediate', quickAction = null }) {
   const config = getAiConfig();
 
+  const latestUserMessage = messages?.slice().reverse().find((m) => m.role === 'user')?.content || '';
+
   // If no API key configured, use intelligent pedagogical fallback
   if (!config.configured) {
-    const latestUserMessage = messages?.slice().reverse().find((m) => m.role === 'user')?.content || '';
     const demoContent = generatePedagogicalDemoResponse({
       message: latestUserMessage,
       subject,
@@ -1044,6 +1397,7 @@ export async function processChatRequest({ messages, subject, mode = 'intermedia
 
   // API Key is configured -> generate system prompt and call real LLM
   const systemInstruction = buildSystemPrompt({ subject, mode, quickAction });
+  const overallDeadline = Date.now() + OVERALL_REQUEST_DEADLINE_MS;
 
   try {
     if (config.provider === 'gemini') {
@@ -1051,8 +1405,46 @@ export async function processChatRequest({ messages, subject, mode = 'intermedia
         messages,
         systemInstruction,
         apiKey: config.geminiKey,
-        model: config.geminiModel
+        model: config.geminiModel,
+        overallDeadline
       });
+
+      // SVG Completeness Validation & Controlled Single Recovery
+      const svgValidation = validateSvgCompleteness(result.content);
+      if (svgValidation.hasSvg && (!svgValidation.isComplete || result.finishReason === 'MAX_TOKENS')) {
+        console.warn(`[StudyNest AI] Incomplete SVG detected (${svgValidation.reason || 'finishReason=MAX_TOKENS'}). Checking time for controlled recovery...`);
+        const timeRemaining = overallDeadline - Date.now();
+        if (timeRemaining > 8000) {
+          console.log(`[StudyNest AI] Attempting controlled single regeneration for complete SVG (${(timeRemaining / 1000).toFixed(1)}s remaining)...`);
+          try {
+            const recoveryInstruction = `You are an expert technical SVG graphics generator. Your task is to output ONLY raw, complete, valid, and self-contained SVG markup without markdown code fences, conversational prose, or introductory essays. Start immediately with <svg and end with </svg>. Ensure all tags, paths, and attributes are properly closed and scientifically accurate.`;
+            const recoveryPrompt = `Provide ONLY a concise, valid, fully self-contained SVG diagram for: "${latestUserMessage}". Output pure SVG directly with no markdown fences, no explanatory preamble, and no decorative bloat. Start with <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 360" width="100%" height="auto"> and ensure you finish with </svg>.`;
+
+            const recoveryResult = await callGemini({
+              messages: [{ role: 'user', content: recoveryPrompt }],
+              systemInstruction: recoveryInstruction,
+              apiKey: config.geminiKey,
+              model: config.geminiModel,
+              overallDeadline
+            });
+
+            const recValidation = validateSvgCompleteness(recoveryResult.content);
+            if (recValidation.isComplete) {
+              console.log('[StudyNest AI] Controlled recovery succeeded with complete SVG.');
+              result.content = recoveryResult.content;
+            } else {
+              console.warn('[StudyNest AI] Recovery attempt still produced incomplete SVG. Retaining raw code for inspection.');
+              result.content = `> **[Diagram Generation Notice]**\n> The AI diagram could not be fully completed within the output token budget (${recValidation.reason || 'cut off'}).\n> You can inspect or copy the raw SVG code below, or ask: *"Generate a concise SVG diagram of ${latestUserMessage.slice(0, 40).replace(/["`]/g, '')} only"*.\n\n\`\`\`xml\n${recoveryResult.content || result.content}\n\`\`\``;
+            }
+          } catch (recErr) {
+            console.warn('[StudyNest AI] Controlled recovery attempt failed:', recErr.message);
+            result.content = `> **[Diagram Generation Notice]**\n> The AI diagram could not be fully completed within the output limit (${svgValidation.reason || 'cut off'}).\n> You can inspect or copy the raw SVG code below, or ask: *"Generate a concise SVG diagram of ${latestUserMessage.slice(0, 40).replace(/["`]/g, '')} only"*.\n\n\`\`\`xml\n${result.content}\n\`\`\``;
+          }
+        } else {
+          console.warn('[StudyNest AI] Insufficient time remaining for recovery. Retaining raw code for inspection.');
+          result.content = `> **[Diagram Generation Notice]**\n> The AI diagram could not be fully completed within the available time (${svgValidation.reason || 'cut off'}).\n> You can inspect or copy the raw SVG code below, or ask: *"Generate a concise SVG diagram of ${latestUserMessage.slice(0, 40).replace(/["`]/g, '')} only"*.\n\n\`\`\`xml\n${result.content}\n\`\`\``;
+        }
+      }
 
       return {
         ok: true,
@@ -1070,6 +1462,11 @@ export async function processChatRequest({ messages, subject, mode = 'intermedia
         baseUrl: config.openaiBaseUrl,
         model: config.openaiModel
       });
+
+      const svgValidation = validateSvgCompleteness(result.content);
+      if (svgValidation.hasSvg && !svgValidation.isComplete) {
+        result.content = `> **[Diagram Generation Notice]**\n> The diagram markup generated by the AI was incomplete (${svgValidation.reason}).\n> You can inspect the raw code below, or ask for a simpler diagram:\n\n\`\`\`xml\n${result.content}\n\`\`\``;
+      }
 
       return {
         ok: true,

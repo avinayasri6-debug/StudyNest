@@ -245,66 +245,306 @@ function renderMath(latexString, isBlock = false, key = 'math') {
 }
 
 /**
- * Strict SVG Sanitizer: strips scripts, event handlers, and javascript: links
+ * Strict SVG Sanitizer & Validator
+ * - Strips scripts, foreignObject, event attributes, javascript/data protocols, external URLs
+ * - Preserves dimensions, viewBox, paths, circles, labels, gradients, markers, filters, text
+ * - Validates XML structure with DOMParser (in browser)
+ * - Returns { valid: boolean, sanitizedSvg: string, error?: string, rawCode: string }
  */
-function sanitizeSvg(rawSvg) {
-  if (!rawSvg) return '';
-  let svg = rawSvg.trim();
-
-  // Strip code block fences if passed inside
-  if (svg.startsWith('```')) {
-    svg = svg.replace(/^```[a-zA-Z]*\r?\n/, '').replace(/\r?\n```$/, '').trim();
+function sanitizeAndValidateSvg(rawInput) {
+  if (!rawInput || typeof rawInput !== 'string') {
+    return { valid: false, error: 'Empty diagram content', rawCode: '', sanitizedSvg: '' };
   }
 
-  // Remove <script> tags completely
-  svg = svg.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  // 1. Unwrap from code blocks or markdown wrappers if needed
+  let cleaned = rawInput.trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```[a-zA-Z0-9_:-]*\r?\n/, '').replace(/\r?\n```$/, '').trim();
+  }
 
-  // Remove inline event handlers (onload, onerror, onclick, etc.)
-  svg = svg.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '');
-  svg = svg.replace(/\son\w+\s*=\s*[^\s>]+/gi, '');
+  // 2. Locate SVG opening and closing tags
+  const svgStartIdx = cleaned.search(/<svg[\s>]/i);
+  const svgEndIdx = cleaned.search(/<\/svg>/i);
 
-  // Remove javascript: URLs
-  svg = svg.replace(/(?:href|xlink:href)\s*=\s*(['"])\s*javascript:.*?\1/gi, '');
+  if (svgStartIdx === -1) {
+    return {
+      valid: false,
+      error: 'Missing opening <svg> tag.',
+      rawCode: cleaned,
+      sanitizedSvg: ''
+    };
+  }
 
-  // Ensure responsive attributes and viewBox
-  svg = svg.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
-    let newAttrs = attrs;
-    if (!/viewBox=/i.test(newAttrs)) {
-      const wMatch = newAttrs.match(/width=["']?(\d+)["']?/i);
-      const hMatch = newAttrs.match(/height=["']?(\d+)["']?/i);
-      if (wMatch && hMatch) {
-        newAttrs += ` viewBox="0 0 ${wMatch[1]} ${hMatch[1]}"`;
-      } else {
-        newAttrs += ` viewBox="0 0 650 360"`;
+  if (svgEndIdx === -1) {
+    return {
+      valid: false,
+      error: 'Incomplete SVG diagram (missing closing </svg> tag). The diagram was likely cut off during generation.',
+      rawCode: cleaned,
+      sanitizedSvg: ''
+    };
+  }
+
+  // Slice exactly the SVG portion from <svg to </svg>
+  const endOffset = cleaned.slice(svgEndIdx).indexOf('>') + 1;
+  let svgContent = cleaned.slice(svgStartIdx, svgEndIdx + (endOffset || 6)).trim();
+
+  // 3. Pre-sanitize strings: strip dangerous tags and script protocols
+  svgContent = svgContent
+    .replace(/<\?xml[\s\S]*?\?>/gi, '')
+    .replace(/<!DOCTYPE[\s\S]*?>/gi, '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<script\b[^>]*\/>/gi, '')
+    .replace(/<foreignObject\b[\s\S]*?<\/foreignObject>/gi, '')
+    .replace(/<foreignObject\b[^>]*\/>/gi, '')
+    .replace(/<(object|embed|iframe|meta|link|applet|form|input|button|audio|video)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(object|embed|iframe|meta|link|applet|form|input|button|audio|video)\b[^>]*\/>/gi, '')
+    // Remove all inline event handlers: onclick, onload, onerror, onmouseover, etc.
+    .replace(/\s+on[a-zA-Z]+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, '')
+    // Remove javascript:, vbscript:, and data:text/html URIs
+    .replace(/(?:href|xlink:href)\s*=\s*(['"])\s*(?:javascript|vbscript|data:text\/html):.*?\1/gi, '')
+    // Disallow external resource loading (http:// or https:// or //)
+    .replace(/(?:href|xlink:href)\s*=\s*(['"])\s*(?:https?:)?\/\/.*?\1/gi, '$1#$1');
+
+  // 4. Browser DOM-level validation and element whitelisting (when window.DOMParser exists)
+  if (typeof window !== 'undefined' && typeof window.DOMParser !== 'undefined') {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(svgContent, 'image/svg+xml');
+
+      const parserError = doc.querySelector('parsererror');
+      if (parserError) {
+        return {
+          valid: false,
+          error: `Malformed XML syntax in diagram: ${parserError.textContent.slice(0, 120)}`,
+          rawCode: svgContent,
+          sanitizedSvg: ''
+        };
       }
-    }
-    if (!/xmlns=/i.test(newAttrs)) {
-      newAttrs += ' xmlns="http://www.w3.org/2000/svg"';
-    }
-    return `<svg ${newAttrs.trim()}>`;
-  });
 
-  return svg;
+      const svgEl = doc.documentElement;
+      if (!svgEl || svgEl.nodeName.toLowerCase() !== 'svg') {
+        return {
+          valid: false,
+          error: 'Root element is not a valid <svg> element.',
+          rawCode: svgContent,
+          sanitizedSvg: ''
+        };
+      }
+
+      // Safe SVG Elements Whitelist
+      const ALLOWED_ELEMENTS = new Set([
+        'svg', 'g', 'defs', 'lineargradient', 'radialgradient', 'stop',
+        'marker', 'pattern', 'clippath', 'mask', 'filter', 'fedropshadow',
+        'fegaussianblur', 'feoffset', 'femerge', 'femergenode', 'fecolormatrix',
+        'fecomponenttransfer', 'fefunca', 'feblend',
+        'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse',
+        'text', 'tspan', 'textpath', 'use', 'title', 'desc', 'style'
+      ]);
+
+      const allElements = svgEl.querySelectorAll('*');
+      for (let i = 0; i < allElements.length; i++) {
+        const el = allElements[i];
+        const tagName = el.nodeName.toLowerCase();
+        if (!ALLOWED_ELEMENTS.has(tagName)) {
+          el.remove();
+          continue;
+        }
+
+        // Clean element attributes
+        const attrs = Array.from(el.attributes);
+        for (const attr of attrs) {
+          const aName = attr.name.toLowerCase();
+          const aVal = attr.value;
+
+          // Strip any event handler
+          if (aName.startsWith('on')) {
+            el.removeAttribute(attr.name);
+            continue;
+          }
+
+          // Strip unsafe or external hrefs
+          if (aName === 'href' || aName === 'xlink:href' || aName === 'src') {
+            const lowVal = aVal.trim().toLowerCase();
+            if (
+              lowVal.startsWith('javascript:') ||
+              lowVal.startsWith('vbscript:') ||
+              lowVal.startsWith('data:text/html') ||
+              lowVal.startsWith('http://') ||
+              lowVal.startsWith('https://') ||
+              lowVal.startsWith('//')
+            ) {
+              el.removeAttribute(attr.name);
+              continue;
+            }
+          }
+
+          // Clean style attribute
+          if (aName === 'style') {
+            const lowStyle = aVal.toLowerCase();
+            if (
+              lowStyle.includes('javascript:') ||
+              lowStyle.includes('expression(') ||
+              lowStyle.includes('@import') ||
+              lowStyle.includes('url(http')
+            ) {
+              el.removeAttribute('style');
+            }
+          }
+        }
+
+        // Sanitize <style> tag content
+        if (tagName === 'style' && el.textContent) {
+          let css = el.textContent;
+          css = css.replace(/@import[\s\S]*?;/gi, '')
+                   .replace(/expression\s*\([^)]*\)/gi, '')
+                   .replace(/url\s*\(\s*(['"]?)\s*https?:\/\/[^)]*\1\s*\)/gi, 'none')
+                   .replace(/javascript:/gi, '');
+          el.textContent = css;
+        }
+      }
+
+      // Ensure proper viewBox for responsive scaling
+      if (!svgEl.hasAttribute('viewBox')) {
+        const w = svgEl.getAttribute('width');
+        const h = svgEl.getAttribute('height');
+        const numW = parseFloat(w);
+        const numH = parseFloat(h);
+        if (!isNaN(numW) && !isNaN(numH) && numW > 0 && numH > 0) {
+          svgEl.setAttribute('viewBox', `0 0 ${numW} ${numH}`);
+        } else {
+          svgEl.setAttribute('viewBox', '0 0 650 360');
+        }
+      }
+
+      // Ensure standard xmlns namespace
+      if (!svgEl.hasAttribute('xmlns')) {
+        svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      }
+
+      // Responsive sizing: full width within container while preserving viewBox aspect ratio
+      svgEl.setAttribute('width', '100%');
+      svgEl.setAttribute('height', 'auto');
+
+      const serializer = new XMLSerializer();
+      const finalSvg = serializer.serializeToString(svgEl);
+
+      return {
+        valid: true,
+        sanitizedSvg: finalSvg,
+        rawCode: svgContent
+      };
+    } catch (domErr) {
+      return {
+        valid: false,
+        error: `Could not parse diagram XML: ${domErr.message}`,
+        rawCode: svgContent,
+        sanitizedSvg: ''
+      };
+    }
+  }
+
+  // Fallback for SSR / Node environment
+  return {
+    valid: true,
+    sanitizedSvg: svgContent,
+    rawCode: svgContent
+  };
 }
 
 /**
  * Interactive SVG Diagram Card with Preview & Raw Code Tabs
+ * Handles valid diagrams and incomplete/invalid diagram notices gracefully
  */
 function SvgDiagramBlock({ svgContent, blockKey, onShowToast }) {
   const [viewMode, setViewMode] = useState('preview'); // 'preview' | 'code'
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const cleanSvg = sanitizeSvg(svgContent);
+  const result = sanitizeAndValidateSvg(svgContent);
 
   const handleCopy = () => {
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(cleanSvg);
+      const textToCopy = result.valid ? result.sanitizedSvg : (result.rawCode || svgContent);
+      navigator.clipboard.writeText(textToCopy);
       setCopied(true);
-      onShowToast?.('SVG diagram code copied to clipboard');
+      onShowToast?.('SVG diagram markup copied to clipboard');
       setTimeout(() => setCopied(false), 2500);
     }
   };
 
+  // If SVG is invalid or incomplete (Requirement 6)
+  if (!result.valid) {
+    return (
+      <div key={blockKey} className="svg-diagram-card svg-diagram-notice-card">
+        <div className="svg-diagram-header">
+          <div className="svg-diagram-title" style={{ color: '#b45309' }}>
+            <span style={{ fontSize: '15px' }}>⚠️</span>
+            <span>Diagram Notice</span>
+          </div>
+
+          <div className="svg-diagram-actions">
+            <button
+              type="button"
+              className="svg-tab-btn"
+              onClick={() => setShowErrorDetails(!showErrorDetails)}
+              title="Inspect received SVG code"
+            >
+              <IconCode size={12} />
+              <span>{showErrorDetails ? 'Hide Code' : 'View Code'}</span>
+            </button>
+
+            <button
+              type="button"
+              className="svg-action-btn"
+              onClick={handleCopy}
+              title="Copy received SVG markup"
+            >
+              {copied ? (
+                <>
+                  <IconCheckCircle size={12} style={{ color: '#10B981' }} />
+                  <span>Copied</span>
+                </>
+              ) : (
+                <>
+                  <IconCopy size={12} />
+                  <span>Copy Code</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: '14px 16px', backgroundColor: '#fffbeb', borderBottom: showErrorDetails ? '1px solid #fef3c7' : 'none' }}>
+          <p style={{ margin: '0 0 6px 0', fontSize: '13px', fontWeight: 600, color: '#92400e' }}>
+            The diagram markup is incomplete or could not be rendered visually.
+          </p>
+          <p style={{ margin: 0, fontSize: '12px', color: '#b45309', lineHeight: 1.5 }}>
+            {result.error || 'Missing closing tags or syntax issue.'} You can inspect the code below or ask the AI tutor to redraw the diagram.
+          </p>
+        </div>
+
+        {showErrorDetails && (
+          <pre
+            style={{
+              margin: 0,
+              padding: '12px 14px',
+              backgroundColor: '#16221c',
+              color: '#dbe7df',
+              fontFamily: 'var(--font-mono, monospace)',
+              fontSize: '12px',
+              lineHeight: 1.5,
+              overflowX: 'auto',
+              whiteSpace: 'pre'
+            }}
+          >
+            <code>{result.rawCode || svgContent}</code>
+          </pre>
+        )}
+      </div>
+    );
+  }
+
+  // Valid SVG Diagram (Requirements 1, 2, 3, 4, 5, 8)
   return (
     <div key={blockKey} className="svg-diagram-card">
       <div className="svg-diagram-header">
@@ -338,7 +578,7 @@ function SvgDiagramBlock({ svgContent, blockKey, onShowToast }) {
             type="button"
             className="svg-action-btn"
             onClick={handleCopy}
-            title="Copy SVG XML to clipboard"
+            title="Copy SVG markup to clipboard"
           >
             {copied ? (
               <>
@@ -358,7 +598,9 @@ function SvgDiagramBlock({ svgContent, blockKey, onShowToast }) {
       {viewMode === 'preview' ? (
         <div
           className="svg-diagram-preview"
-          dangerouslySetInnerHTML={{ __html: cleanSvg }}
+          // Safe: Strict sanitization via sanitizeAndValidateSvg ensures only whitelisted,
+          // script-free, event-free, internal-only SVG nodes are rendered.
+          dangerouslySetInnerHTML={{ __html: result.sanitizedSvg }}
         />
       ) : (
         <pre
@@ -367,14 +609,14 @@ function SvgDiagramBlock({ svgContent, blockKey, onShowToast }) {
             padding: '12px 14px',
             backgroundColor: '#16221c',
             color: '#dbe7df',
-            fontFamily: 'var(--font-mono)',
+            fontFamily: 'var(--font-mono, monospace)',
             fontSize: '12px',
             lineHeight: 1.5,
             overflowX: 'auto',
             whiteSpace: 'pre'
           }}
         >
-          <code>{cleanSvg}</code>
+          <code>{result.sanitizedSvg}</code>
         </pre>
       )}
     </div>
@@ -400,6 +642,22 @@ export default function MarkdownRenderer({
       <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', padding: '12px 0' }}>
         No content written yet.
       </div>
+    );
+  }
+
+  // 0. Quick check: Is the entire response a complete standalone SVG?
+  const trimmedContent = content.trim();
+  const unwrappedContent = trimmedContent.replace(/^```[a-zA-Z0-9_:-]*\r?\n/, '').replace(/\r?\n```$/, '').trim();
+  if (
+    /^(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)?<svg[\s>]/i.test(unwrappedContent) &&
+    /<\/svg>\s*$/i.test(unwrappedContent)
+  ) {
+    return (
+      <SvgDiagramBlock
+        svgContent={unwrappedContent}
+        blockKey="full-svg-response"
+        onShowToast={onShowToast}
+      />
     );
   }
 
@@ -513,8 +771,9 @@ export default function MarkdownRenderer({
       const codeText = codeLines.join('\n');
       const blockKey = `code-${lineIdx}`;
 
-      // Check if this is an SVG diagram
-      const isSvgBlock = lang === 'svg' || ((lang === 'xml' || lang === 'html') && codeText.includes('<svg') && codeText.includes('</svg>'));
+      // Check if this is an SVG diagram (e.g. ```svg, ```xml, ```html, or code containing <svg>)
+      const hasSvgOpen = /<svg[\s>]/i.test(codeText);
+      const isSvgBlock = lang.includes('svg') || (hasSvgOpen && (codeText.includes('</svg>') || lang === 'xml' || lang === 'html' || lang === 'markup' || !lang));
       if (isSvgBlock) {
         elements.push(
           <SvgDiagramBlock
@@ -628,38 +887,45 @@ export default function MarkdownRenderer({
       continue;
     }
 
-    // 2. Standalone Raw SVG block: <svg ... </svg>
-    if (line.trim().startsWith('<svg') && !line.trim().includes('</svg>')) {
-      const svgLines = [line];
+    // 2. Standalone Raw SVG block: starts with <svg or <?xml ... <svg
+    const trimmedLine = line.trim();
+    if (
+      /<svg[\s>]/i.test(trimmedLine) ||
+      (trimmedLine.startsWith('<?xml') && lineIdx + 1 < lines.length && /<svg[\s>]/i.test(lines[lineIdx + 1]))
+    ) {
+      // Check if there is text before <svg on this line
+      const preSvgMatch = line.match(/^([\s\S]*?)(<svg[\s>][\s\S]*)$/i);
+      if (preSvgMatch && preSvgMatch[1].trim()) {
+        elements.push(
+          <p key={`pre-svg-${lineIdx}`} style={{ margin: '8px 0', lineHeight: 1.6 }}>
+            {renderInline(preSvgMatch[1].trim())}
+          </p>
+        );
+      }
+
+      const svgLines = [preSvgMatch ? preSvgMatch[2] : line];
+      let foundEnd = /<\/svg>/i.test(line);
       lineIdx++;
-      while (lineIdx < lines.length && !lines[lineIdx].includes('</svg>')) {
-        svgLines.push(lines[lineIdx]);
+
+      while (lineIdx < lines.length && !foundEnd) {
+        const curLine = lines[lineIdx];
+        svgLines.push(curLine);
+        if (/<\/svg>/i.test(curLine)) {
+          foundEnd = true;
+        }
         lineIdx++;
       }
-      if (lineIdx < lines.length) {
-        svgLines.push(lines[lineIdx]);
-        lineIdx++;
-      }
+
       const rawSvgText = svgLines.join('\n');
+      const blockKey = `raw-svg-${lineIdx}`;
       elements.push(
         <SvgDiagramBlock
-          key={`raw-svg-${lineIdx}`}
+          key={blockKey}
           svgContent={rawSvgText}
-          blockKey={`raw-svg-${lineIdx}`}
+          blockKey={blockKey}
           onShowToast={onShowToast}
         />
       );
-      continue;
-    } else if (line.trim().startsWith('<svg') && line.trim().includes('</svg>')) {
-      elements.push(
-        <SvgDiagramBlock
-          key={`inline-svg-${lineIdx}`}
-          svgContent={line}
-          blockKey={`inline-svg-${lineIdx}`}
-          onShowToast={onShowToast}
-        />
-      );
-      lineIdx++;
       continue;
     }
 

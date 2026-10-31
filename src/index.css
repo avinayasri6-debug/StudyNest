@@ -149,6 +149,15 @@ input, textarea, select {
   font-size: inherit;
 }
 
+@media (max-width: 768px) {
+  /* Prevent iOS Safari and Chrome auto-zoom on focus */
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 /* Subtle selection color */
 ::selection {
   background-color: var(--sage-200);

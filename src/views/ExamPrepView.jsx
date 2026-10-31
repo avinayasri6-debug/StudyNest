@@ -733,7 +733,7 @@ export default function ExamPrepView({
             </div>
 
             {upcomingExams.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '14px' }}>
                 {upcomingExams.map((exam) => {
                   const days = getDaysRemaining(exam.date);
                   const isUrgent = days !== null && days <= 7;
@@ -833,7 +833,7 @@ export default function ExamPrepView({
             <h2 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--forest-950)', marginBottom: '12px' }}>
               Subject-wise Preparation Progress
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '14px' }}>
               {SEMESTER_1_SUBJECTS.map((subj) => {
                 const completedCount = (completedTopics[subj.id] || []).length;
                 const totalTopics = subj.topics ? subj.topics.length : 10;
@@ -2063,7 +2063,7 @@ export default function ExamPrepView({
 
           {/* Sub-tab 3: Important Formulas Sheets */}
           {revisionTab === 'formulas' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '16px' }}>
               {SUBJECT_FORMULA_SHEETS.map((sheet, sIdx) => (
                 <div key={sIdx} className="subject-card" style={{ padding: '20px 22px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -2287,7 +2287,7 @@ export default function ExamPrepView({
           </div>
 
           {/* Python Assessment Question Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '16px' }}>
             {PYTHON_ASSESSMENT_QUESTIONS.map((pq, idx) => (
               <div key={pq.id} className="subject-card" style={{ padding: '20px 22px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -2628,7 +2628,7 @@ export default function ExamPrepView({
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: '12px' }}>
                   <div>
                     <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
                       Correct Answer *

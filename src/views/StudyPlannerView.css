@@ -442,7 +442,7 @@
 /* Feature 4: Exam Countdown Cards */
 .exam-countdown-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 16px;
 }
 
@@ -585,7 +585,7 @@
 /* Feature 7: Smart Prioritization Suggestions */
 .suggestions-split-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 20px;
 }
 

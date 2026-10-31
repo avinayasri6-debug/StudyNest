@@ -30,6 +30,7 @@ export default function TopNav({
   onShowToast
 }) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const searchWrapRef = useRef(null);
 
   // Close dropdown on click outside
@@ -37,6 +38,7 @@ export default function TopNav({
     function handleClickOutside(event) {
       if (searchWrapRef.current && !searchWrapRef.current.contains(event.target)) {
         setIsSearchOpen(false);
+        setIsMobileSearchOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -135,6 +137,7 @@ export default function TopNav({
   const handleResultClick = (target) => {
     onNavigateToResult(target);
     setIsSearchOpen(false);
+    setIsMobileSearchOpen(false);
     onSearchChange('');
   };
 
@@ -159,7 +162,7 @@ export default function TopNav({
         </button>
 
         {/* Global Search Bar */}
-        <div className="search-bar-wrap" ref={searchWrapRef}>
+        <div className={`search-bar-wrap ${isMobileSearchOpen ? 'mobile-active' : ''}`} ref={searchWrapRef}>
           <IconSearch size={16} className="search-icon-pos" />
           <input
             type="text"
@@ -174,7 +177,7 @@ export default function TopNav({
               if (query.length >= 2) setIsSearchOpen(true);
             }}
           />
-          {searchTerm && (
+          {searchTerm && !isMobileSearchOpen && (
             <button
               type="button"
               onClick={() => {
@@ -192,6 +195,31 @@ export default function TopNav({
               aria-label="Clear search"
             >
               <IconX size={14} />
+            </button>
+          )}
+
+          {isMobileSearchOpen && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileSearchOpen(false);
+                setIsSearchOpen(false);
+                onSearchChange('');
+              }}
+              style={{
+                position: 'absolute',
+                right: '10px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-muted)',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              aria-label="Close mobile search"
+            >
+              <IconX size={16} />
             </button>
           )}
 
@@ -447,6 +475,16 @@ export default function TopNav({
       </div>
 
       <div className="nav-right-section">
+        {/* Mobile Search Button */}
+        <button
+          type="button"
+          className="header-icon-btn mobile-search-trigger"
+          aria-label="Open search bar"
+          onClick={() => setIsMobileSearchOpen(true)}
+        >
+          <IconSearch size={18} />
+        </button>
+
         {/* Semester 1 indicator */}
         <div className="term-pill-badge" title="Active Academic Session">
           <span className="term-pill-dot" />
@@ -512,7 +550,7 @@ export default function TopNav({
               {initials}
             </div>
           )}
-          <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--forest-950)' }}>
+          <span className="top-profile-label" style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--forest-950)' }}>
             Profile
           </span>
         </div>

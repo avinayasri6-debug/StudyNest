@@ -13,30 +13,22 @@ import process from 'node:process';
 export function loadEnvironment(rootDir = process.cwd()) {
   const envPath = path.resolve(rootDir, '.env');
   if (fs.existsSync(envPath)) {
-    if (typeof process.loadEnvFile === 'function') {
-      try {
-        process.loadEnvFile(envPath);
-      } catch (err) {
-        console.warn('[StudyNest AI] Warning loading .env:', err.message);
-      }
-    } else {
-      try {
-        const content = fs.readFileSync(envPath, 'utf8');
-        content.split(/\r?\n/).forEach((line) => {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith('#')) return;
-          const eqIdx = trimmed.indexOf('=');
-          if (eqIdx > 0) {
-            const key = trimmed.slice(0, eqIdx).trim();
-            const val = trimmed.slice(eqIdx + 1).trim().replace(/^['"](.*)['"]$/, '$1');
-            if (!process.env[key]) {
-              process.env[key] = val;
-            }
+    try {
+      const content = fs.readFileSync(envPath, 'utf8');
+      content.split(/\r?\n/).forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx > 0) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          const val = trimmed.slice(eqIdx + 1).trim().replace(/^['"](.*)['"]$/, '$1');
+          if (val) {
+            process.env[key] = val;
           }
-        });
-      } catch (err) {
-        console.warn('[StudyNest AI] Fallback .env parse error:', err.message);
-      }
+        }
+      });
+    } catch (err) {
+      console.warn('[StudyNest AI] Fallback .env parse error:', err.message);
     }
   }
 }
@@ -61,7 +53,7 @@ export function getAiConfig() {
     provider = 'openai';
   }
 
-  const geminiModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const geminiModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
   const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const openaiBaseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
 
@@ -185,12 +177,55 @@ CURRENT ACADEMIC CONTEXT:
 ${modeInstruction}
 ${quickActionInstruction}
 
-PEDAGOGICAL TEACHING PRINCIPLES:
-1. Promote Conceptual Mastery: Help students deeply understand principles rather than just memorizing answers. Guide them through the reasoning process.
-2. Formatting: Use clean Markdown. Use '###' for section headings, bold text for key terms, bulleted lists for clarity, and clean LaTeX-style or ASCII formulas.
-3. Code Quality: When generating code (especially Python), write clean, idiomatic code with helpful comments. Always enclose Python code in \`\`\`python blocks.
-4. Tone: Encouraging, supportive, precise, and academically authoritative yet friendly.
-5. University Relevance: Ensure explanations align with standard engineering syllabus expectations for Semester 1.
+PEDAGOGICAL TEACHING PRINCIPLES & RESPONSE CALIBRATION:
+You must understand the student's question type and calibrate your answer structure, tone, and length accordingly:
+
+1. BASIC CONCEPT / DEFINITION QUESTIONS (e.g., "What is...", "Define...", "What are Newton's Rings?"):
+   - ALWAYS start directly with an easy-to-understand 1-2 sentence definition in simple English suitable for a first-year engineering student.
+   - Do NOT automatically dump lengthy textbook chapters or unnecessary filler. Keep total length concise (~150-250 words).
+   - Follow this concise 4-part structure:
+     ### 1. Simple Definition
+     (A direct, crystal-clear 1-2 sentence definition.)
+     ### 2. How It Works
+     (A brief, intuitive explanation of the core physical or computational mechanism.)
+     ### 3. Relevant Example / Application
+     (Where this concept is used in modern engineering or daily life.)
+     ### 4. Important Point to Remember
+     (Key takeaway, examination insight, or critical trap to avoid.)
+
+2. DETAILED EXPLANATION QUESTIONS (e.g., "Explain the formation of...", "How does X work?", "Derive..."):
+   - Provide moderate structured depth without overwhelming the student.
+   - Break the explanation into logical, sequential steps (Step 1, Step 2, Step 3, etc.).
+   - Explain difficult concepts (e.g. division of amplitude, optical path difference, phase inversion at denser boundaries) using clear mental models.
+
+3. FORMULA & EQUATION QUESTIONS (e.g., "Give the formula for...", "Equation of..."):
+   - State the primary governing formula prominently using LaTeX formatting enclosed in $$ ... $$ or $ ... $.
+   - MANDATORY: Immediately provide a complete symbol breakdown explaining EVERY single variable, constant, and its standard SI unit (e.g. meters [m], seconds [s], radians [rad], etc.).
+   - State the physical conditions of validity (e.g. normal incidence, reflected light, medium refractive index).
+
+4. DIAGRAMS & SVG REQUESTS (e.g., "Draw an SVG diagram...", "Show diagram of...", "Draw schematic..."):
+   - When a student asks for a diagram or SVG, you MUST output a complete, valid, self-contained SVG element inside a \`\`\`svg code block.
+   - NEVER say "Here is a diagram" or describe a diagram in text without generating the actual SVG code!
+   - Ensure the SVG:
+     * Has proper attributes: \`viewBox="0 0 650 360"\` and \`xmlns="http://www.w3.org/2000/svg"\`.
+     * Uses clean, high-contrast, modern styling with legible sans-serif fonts (\`font-size="12px"\` or \`"13px"\`).
+     * Accurately draws and clearly labels all essential physical components with arrows and text (for example, in Newton's Rings: Plano-Convex Lens of large radius R, Optically Flat Glass Plate, Wedge-shaped Air Film, Point of Contact O where t=0, Incident Monochromatic Light Ray, Reflected Rays from bottom of lens and top of glass plate showing interference, and an inset circular interference ring pattern with alternate dark and bright rings and a central dark spot).
+     * Has all tags properly closed (\`</svg>\`).
+
+5. NUMERICAL PROBLEMS:
+   - 1. Given Data with standard SI units.
+   - 2. Target Variable to calculate.
+   - 3. Governing Formula.
+   - 4. Step-by-step algebraic substitution and simplification.
+   - 5. Final Answer with correct SI units clearly bolded or boxed.
+
+6. MATHEMATICAL FORMATTING & NOTATION:
+   - Enclose display equations in $$ ... $$ on their own lines.
+   - Enclose inline variables and symbols in single dollars (e.g. $D_n$, $\\lambda$, $R$).
+   - Never output raw unescaped LaTeX backslashes without dollar delimiters.
+
+7. TONE & EMPATHY:
+   - Patient, encouraging, academically authoritative, and supportive of first-year engineering students.
 `.trim();
 }
 
@@ -198,7 +233,8 @@ PEDAGOGICAL TEACHING PRINCIPLES:
  * Call Google Gemini API
  */
 async function callGemini({ messages, systemInstruction, apiKey, model }) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const targetModel = model || process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   // Convert messages to Gemini format (roles: 'user' | 'model')
   const contents = [];
@@ -226,11 +262,27 @@ async function callGemini({ messages, systemInstruction, apiKey, model }) {
     }
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } catch (fetchErr) {
+    clearTimeout(timeoutId);
+    // If request timed out or network stalled, gracefully try gemini-3.6-flash
+    if (fetchErr.name === 'AbortError' && targetModel !== 'gemini-3.6-flash') {
+      console.warn(`[StudyNest AI] Model ${targetModel} timed out. Retrying with gemini-3.6-flash...`);
+      return callGemini({ messages, systemInstruction, apiKey, model: 'gemini-3.6-flash' });
+    }
+    throw fetchErr;
+  }
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     let errorDetail = '';
@@ -239,6 +291,13 @@ async function callGemini({ messages, systemInstruction, apiKey, model }) {
       errorDetail = errJson.error?.message || JSON.stringify(errJson);
     } catch {
       errorDetail = await response.text();
+    }
+
+    // If model returns 404 (retired model), 503 (high demand spike), or 429 (rate limit), fail over to gemini-3.6-flash
+    if ((response.status === 404 || response.status === 503 || response.status === 429) && targetModel !== 'gemini-3.6-flash') {
+      console.warn(`[StudyNest AI] Model ${targetModel} returned HTTP ${response.status} (${errorDetail.slice(0, 100)}). Retrying with gemini-3.6-flash...`);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return callGemini({ messages, systemInstruction, apiKey, model: 'gemini-3.6-flash' });
     }
 
     if (response.status === 400 && errorDetail.toLowerCase().includes('api key')) {
@@ -255,13 +314,16 @@ async function callGemini({ messages, systemInstruction, apiKey, model }) {
   const text = candidate?.content?.parts?.map((p) => p.text).join('') || '';
 
   if (!text) {
+    if (candidate?.finishReason === 'SAFETY') {
+      throw new Error('Gemini response was filtered by academic safety thresholds. Please rephrase your query.');
+    }
     throw new Error('Gemini API returned an empty response. Please try rephrasing your question.');
   }
 
   return {
     content: text,
     provider: 'gemini',
-    model,
+    model: targetModel,
     finishReason: candidate?.finishReason || 'STOP'
   };
 }
@@ -441,9 +503,226 @@ $$(A - 5I)v = \\begin{pmatrix} -1 & 1 \\\\ 1 & -1 \\end{pmatrix}\\begin{pmatrix}
 - **Principal Component Analysis (PCA):** Reducing dimensional complexity of sensor datasets in Machine Learning.
 - **Structural Dynamics:** Natural resonant frequencies in bridge and aircraft wing vibrations.`;
   }
-  // 3. Engineering Physics
-  else if (subId === 'phy102' || q.includes('physics') || q.includes('laser') || q.includes('quantum') || q.includes('optic') || q.includes('schrodinger') || q.includes('semiconductor')) {
-    responseBody = `### Engineering Physics: Core Principles & Physical Meaning
+  // 3. Engineering Physics & Newton's Rings Specialized Pedagogical Engine
+  else if (
+    subId === 'phy102' ||
+    q.includes('newton') ||
+    q.includes('ring') ||
+    q.includes('physics') ||
+    q.includes('laser') ||
+    q.includes('quantum') ||
+    q.includes('optic') ||
+    q.includes('schrodinger') ||
+    q.includes('semiconductor')
+  ) {
+    // 3A. Newton's Rings SVG Diagram Request
+    if (
+      (q.includes('newton') || q.includes('ring')) &&
+      (q.includes('svg') || q.includes('diagram') || q.includes('draw') || q.includes('schematic') || q.includes('experiment'))
+    ) {
+      responseBody = `### Newton's Rings Experiment: Schematic Diagram
+
+Here is the complete engineering schematic diagram of the Newton's Rings optical interference experiment, illustrating the plano-convex lens, flat glass plate, wedge-shaped air film, light ray paths, and the concentric circular interference pattern.
+
+\`\`\`svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 360" width="100%" height="auto">
+  <defs>
+    <linearGradient id="lensGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#1d4ed8" stop-opacity="0.45"/>
+    </linearGradient>
+    <linearGradient id="plateGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#64748b" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#475569" stop-opacity="0.35"/>
+    </linearGradient>
+    <marker id="arrowRed" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#ef4444"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#10b981"/>
+    </marker>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect x="0" y="0" width="650" height="360" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+
+  <!-- Left: Experimental Cross-Section Setup -->
+  <g transform="translate(20, 20)">
+    <text x="170" y="24" font-family="sans-serif" font-size="14" font-weight="700" fill="#0f172a" text-anchor="middle">
+      Cross-Sectional Experimental Setup
+    </text>
+
+    <!-- Incident Light Beam -->
+    <path d="M 120,40 L 120,95" stroke="#ef4444" stroke-width="2.5" marker-end="url(#arrowRed)"/>
+    <text x="125" y="65" font-family="sans-serif" font-size="11" font-weight="600" fill="#dc2626">Incident Monochromatic Ray (λ)</text>
+
+    <!-- Reflected Rays -->
+    <path d="M 120,135 L 90,45" stroke="#10b981" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrowGreen)"/>
+    <path d="M 120,150 L 145,45" stroke="#10b981" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrowGreen)"/>
+    <text x="60" y="42" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#059669">Ray 1 (Bottom of Lens)</text>
+    <text x="155" y="42" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#059669">Ray 2 (Top of Plate)</text>
+
+    <!-- Plano-Convex Lens (Flat Top, Curved Bottom) -->
+    <!-- Top flat face: (30, 95) to (310, 95), bottom curved face meeting plate at (170, 160) -->
+    <path d="M 30,95 L 310,95 Q 170,225 30,95 Z" fill="url(#lensGrad)" stroke="#2563eb" stroke-width="2"/>
+    <text x="170" y="112" font-family="sans-serif" font-size="12" font-weight="600" fill="#1e3a8a" text-anchor="middle">
+      Plano-Convex Lens (Radius R)
+    </text>
+
+    <!-- Wedge-Shaped Air Film Annotation -->
+    <path d="M 60,145 L 85,175" stroke="#d97706" stroke-width="1.5"/>
+    <text x="90" y="185" font-family="sans-serif" font-size="11" font-weight="600" fill="#b45309">
+      Wedge-Shaped Air Film (Thickness t)
+    </text>
+
+    <!-- Flat Glass Plate -->
+    <rect x="20" y="160" width="300" height="28" rx="2" fill="url(#plateGrad)" stroke="#475569" stroke-width="2"/>
+    <text x="170" y="179" font-family="sans-serif" font-size="12" font-weight="600" fill="#334155" text-anchor="middle">
+      Optically Flat Glass Plate
+    </text>
+
+    <!-- Contact Point O -->
+    <circle cx="170" cy="160" r="4" fill="#dc2626"/>
+    <path d="M 170,165 L 170,215" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="3,3"/>
+    <text x="170" y="230" font-family="sans-serif" font-size="11.5" font-weight="700" fill="#dc2626" text-anchor="middle">
+      Point of Contact O (t = 0)
+    </text>
+
+    <!-- Path Difference Formula Note -->
+    <rect x="25" y="250" width="290" height="52" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <text x="170" y="271" font-family="sans-serif" font-size="11.5" font-weight="600" fill="#1e40af" text-anchor="middle">
+      Path Difference: Δ = 2t + λ/2
+    </text>
+    <text x="170" y="289" font-family="sans-serif" font-size="11" fill="#475569" text-anchor="middle">
+      (Phase shift of π occurs at air-to-glass reflection)
+    </text>
+  </g>
+
+  <!-- Divider Line -->
+  <line x1="360" y1="20" x2="360" y2="340" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+
+  <!-- Right: Microscopic View (Circular Rings Pattern) -->
+  <g transform="translate(380, 20)">
+    <text x="125" y="24" font-family="sans-serif" font-size="14" font-weight="700" fill="#0f172a" text-anchor="middle">
+      Microscope View: Fringe Pattern
+    </text>
+
+    <!-- Rings Center: (125, 160) -->
+    <circle cx="125" cy="160" r="110" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+    <circle cx="125" cy="160" r="95" fill="none" stroke="#f8fafc" stroke-width="6"/>
+    <circle cx="125" cy="160" r="76" fill="none" stroke="#f8fafc" stroke-width="7"/>
+    <circle cx="125" cy="160" r="54" fill="none" stroke="#f8fafc" stroke-width="8"/>
+    <circle cx="125" cy="160" r="28" fill="none" stroke="#f8fafc" stroke-width="9"/>
+    <!-- Central Dark Spot -->
+    <circle cx="125" cy="160" r="12" fill="#020617"/>
+
+    <!-- Annotations on Rings -->
+    <line x1="125" y1="160" x2="195" y2="105" stroke="#e2e8f0" stroke-width="1.5"/>
+    <circle cx="125" cy="160" r="2.5" fill="#ef4444"/>
+    <text x="198" y="102" font-family="sans-serif" font-size="11" font-weight="700" fill="#f8fafc">
+      Central Dark Spot
+    </text>
+
+    <line x1="125" y1="160" x2="225" y2="160" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="2,2"/>
+    <text x="175" y="152" font-family="sans-serif" font-size="11" font-weight="600" fill="#38bdf8" text-anchor="middle">
+      Dn ∝ √n
+    </text>
+
+    <!-- Rings Description Box -->
+    <rect x="10" y="285" width="230" height="42" rx="5" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+    <text x="125" y="303" font-family="sans-serif" font-size="11" font-weight="600" fill="#334155" text-anchor="middle">
+      Concentric Circular Interference Rings
+    </text>
+    <text x="125" y="318" font-family="sans-serif" font-size="10" fill="#64748b" text-anchor="middle">
+      (Rings crowd closer together as n increases)
+    </text>
+  </g>
+</svg>
+\`\`\`
+
+#### Key Components Shown in the Diagram:
+1. **Plano-Convex Lens:** A lens with one flat face and one curved face of large radius of curvature $R$.
+2. **Optically Flat Glass Plate:** Supports the lens from below.
+3. **Wedge-Shaped Air Film:** The thickness $t$ increases symmetrically outward from the center.
+4. **Point of Contact $O$:** Where $t = 0$, giving a central dark fringe.
+5. **Two Interfering Beams:** Ray 1 (reflected from bottom of lens) and Ray 2 (reflected from top of plate) produce division of amplitude.`;
+    }
+    // 3B. Newton's Rings Dark Rings Formula Request
+    else if (
+      (q.includes('newton') || q.includes('ring')) &&
+      (q.includes('formula') || q.includes('diameter') || q.includes('dark'))
+    ) {
+      responseBody = `### Formula for the Diameter of Dark Newton's Rings
+
+In the reflected light system, the diameter of the $n$-th dark ring is given by:
+
+$$D_n^2 = 4n\\lambda R \\implies D_n = \\sqrt{4n\\lambda R}$$
+
+#### Complete Variable & SI Unit Breakdown:
+- $D_n$ = Diameter of the $n$-th dark ring, measured in **meters** ($\\text{m}$).
+- $n$ = Ring order / integer number ($n = 0, 1, 2, 3, \\dots$).
+  * For $n = 0$, $D_0 = 0$, which corresponds to the central dark spot at the point of contact.
+- $\\lambda$ = Wavelength of the incident monochromatic light source, measured in **meters** ($\\text{m}$).
+- $R$ = Radius of curvature of the spherical surface of the plano-convex lens, measured in **meters** ($\\text{m}$).
+- $\\mu$ = Refractive index of the medium enclosed between the lens and the glass plate. For an air film, $\\mu = 1$. If a transparent liquid of refractive index $\\mu$ is placed between the lens and the plate, the diameter is modified to:
+  $$D_n = \\sqrt{\\frac{4n\\lambda R}{\\mu}}$$
+
+#### Key Observations & Examination Takeaways:
+1. **Square Root Proportionality:** $D_n \\propto \\sqrt{n}$. The diameters of dark rings are directly proportional to the square roots of natural numbers ($1, \\sqrt{2}, \\sqrt{3}, \\dots$). Consequently, the distance between successive rings decreases as $n$ increases (rings get closer together outward).
+2. **Wavelength Determination:** In the laboratory, the zero-point of contact may be scratched or distorted. To eliminate zero-order measurement error, the wavelength $\\lambda$ is determined by measuring the diameters of two rings of orders $n+m$ and $n$:
+  $$\\lambda = \\frac{D_{n+m}^2 - D_n^2}{4mR}$$`;
+    }
+    // 3C. Newton's Rings Formation Explanation
+    else if (
+      (q.includes('newton') || q.includes('ring')) &&
+      (q.includes('explain') || q.includes('formation') || q.includes('how'))
+    ) {
+      responseBody = `### Formation of Newton's Rings: Step-by-Step Explanation
+
+Newton's Rings are circular interference fringes produced by the principle of **division of amplitude** in a thin wedge-shaped air film.
+
+#### Step 1: Experimental Setup & Film Geometry
+A plano-convex lens with a large radius of curvature $R$ is placed with its curved surface resting on an optically flat glass plate. This encloses a thin, wedge-shaped air film of varying thickness $t$.
+- At the central point of contact $O$, the film thickness is $t = 0$.
+- Moving radially outward, the thickness $t$ increases symmetrically in all directions.
+
+#### Step 2: Division of Amplitude (Two Interfering Rays)
+When monochromatic light of wavelength $\\lambda$ falls normally on the arrangement:
+- **Ray 1:** Part of the light reflects at the lower curved surface of the glass lens (glass-to-air boundary).
+- **Ray 2:** The transmitted portion travels through the air film of thickness $t$ and reflects from the top surface of the flat glass plate (air-to-glass boundary).
+Both reflected rays travel back upward along virtually identical paths and interfere.
+
+#### Step 3: Optical Path Difference & Stokes' Phase Inversion
+The geometric extra distance traversed by Ray 2 is $2\\mu t \\cos r$. For normal incidence ($\\cos r = 1$) in air ($\\mu = 1$), this path difference is $2t$.
+Crucially, Ray 2 reflects from the flat glass plate (an optically denser medium). By **Stokes' Law of Reflection**, reflection at a denser boundary introduces an abrupt phase shift of $\\pi$ radians, corresponding to an additional path difference of $\\frac{\\lambda}{2}$.
+Thus, the total effective optical path difference is:
+$$\\Delta = 2t + \\frac{\\lambda}{2}$$
+
+#### Step 4: Conditions for Fringes in Reflected Light
+- **Dark Rings (Destructive Interference):** Occur when $\\Delta = (2n + 1)\\frac{\\lambda}{2} \\implies 2t = n\\lambda$ (where $n = 0, 1, 2, \\dots$).
+- **Bright Rings (Constructive Interference):** Occur when $\\Delta = n\\lambda \\implies 2t = (2n - 1)\\frac{\\lambda}{2}$ (where $n = 1, 2, \\dots$).
+
+#### Step 5: Why the Fringes are Circular
+Because the lens surface has spherical symmetry, the thickness $t$ of the air film is identical at all points equidistant from the contact point $O$. The loci of constant thickness are concentric circles, producing concentric circular interference rings centered at $O$.`;
+    }
+    // 3D. Newton's Rings Basic Concept Definition
+    else if (q.includes('newton') || q.includes('ring')) {
+      responseBody = `### 1. Simple Definition
+Newton's Rings are circular interference fringe patterns produced when monochromatic light reflects between a curved plano-convex lens and an optically flat glass plate.
+
+### 2. How It Works
+A thin, wedge-shaped air film forms between the curved lens and the flat plate. When light shines down, part of it reflects from the lower surface of the lens and part from the upper surface of the flat glass plate. These two reflected light waves interfere with each other, creating alternate bright and dark concentric circular rings.
+
+### 3. Relevant Example / Application
+- **Optical Surface Flatness Testing:** Engineers and optical fabricators use Newton's Rings to test whether precision optical lenses and telescope mirrors are accurately polished to within fractions of a wavelength.
+- **Wavelength Determination:** Used in physics and engineering laboratories to measure the exact wavelength $\\lambda$ of monochromatic laser or sodium light sources.
+
+### 4. Important Point to Remember
+The central spot in reflected light is always **dark** because light reflecting from the denser glass plate undergoes an automatic phase shift of $\\pi$ radians (an extra optical path difference of $\\frac{\\lambda}{2}$), causing destructive interference at the central point of contact where thickness $t = 0$.`;
+    }
+    // General Physics Response
+    else {
+      responseBody = `### Engineering Physics: Core Principles & Physical Meaning
 
 #### 1. Core Physical Principle
 In physical engineering systems, quantum mechanics and electromagnetic wave theory dictate how modern semiconductor and optical devices operate.
@@ -470,6 +749,7 @@ Where:
 | De Broglie Wavelength | $\\lambda = \\frac{h}{p} = \\frac{h}{\\sqrt{2mE}}$ | Electron microscopy & quantum tunneling |
 | Numerical Aperture | $NA = \\sqrt{n_1^2 - n_2^2}$ | Optical fiber light-gathering capacity |
 | Hall Coefficient | $R_H = \\frac{1}{n q}$ | Magnetic sensors and semiconductor characterization |`;
+    }
   }
   // 4. Fundamentals of Digital Electronics
   else if (subId === 'ee104' || q.includes('digital') || q.includes('gate') || q.includes('flip') || q.includes('karnaugh') || q.includes('k-map') || q.includes('boolean') || q.includes('mux')) {
@@ -686,23 +966,14 @@ export async function processChatRequest({ messages, subject, mode = 'intermedia
     }
   } catch (err) {
     console.error('[StudyNest AI Service Error]:', err.message);
-    // If the live call failed (e.g. invalid key, quota, or network drop),
-    // return a clear error along with fallback demo response so student is never stranded!
-    const latestUserMessage = messages?.slice().reverse().find((m) => m.role === 'user')?.content || '';
-    const fallbackResponse = generatePedagogicalDemoResponse({
-      message: latestUserMessage,
-      subject,
-      mode,
-      quickAction
-    });
-
     return {
       ok: false,
       error: err.message,
-      content: `> **[AI Provider Notice]**\n> Live call to ${config.provider} encountered an error: *${err.message}*\n> StudyNest provided this offline pedagogical explanation in the interim:\n\n` + fallbackResponse,
-      isDemo: true,
+      content: `> **[AI Provider Error]**\n> Live call to ${config.provider} (${config.model}) failed:\n> \`${err.message}\`\n\nPlease check your API key and quota or test connection in .env.`,
+      isDemo: false,
       configured: true,
-      provider: config.provider
+      provider: config.provider,
+      model: config.model
     };
   }
 }
@@ -1360,17 +1631,17 @@ MANDATORY SECTIONS REQUIRED:
     };
   } catch (err) {
     console.error('[StudyNest AI Note Generation Error]:', err.message);
-    const offlineFallback = generateOfflineStructuredNote({ subject, topic: topicName, level, length, focus });
     return {
       ok: false,
       error: err.message,
-      content: `> **[AI Provider Notice]**\n> Live call to ${config.provider} encountered an error: *${err.message}*\n> StudyNest provided this offline structured curriculum note in the interim:\n\n` + offlineFallback,
-      isDemo: true,
+      content: `> **[AI Provider Error]**\n> Note generation with ${config.provider} (${config.model}) failed:\n> \`${err.message}\`\n\nPlease verify your API key and quota at https://aistudio.google.com/.`,
+      isDemo: false,
       configured: true,
       title: `${topicName}`,
       subjectCode: subCode,
       subjectTitle: subTitle,
-      provider: config.provider
+      provider: config.provider,
+      model: config.model
     };
   }
 }

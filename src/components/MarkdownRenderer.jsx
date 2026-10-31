@@ -1,10 +1,391 @@
 import React, { useState } from 'react';
-import { IconCopy, IconCheckCircle, IconPython, IconExternalLink } from './Icons';
+import {
+  IconCopy,
+  IconCheckCircle,
+  IconPython,
+  IconExternalLink,
+  IconCode,
+  IconEye
+} from './Icons';
+
+/**
+ * Greek letters map for LaTeX conversion
+ */
+const GREEK_MAP = {
+  alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε',
+  zeta: 'ζ', eta: 'η', theta: 'θ', iota: 'ι', kappa: 'κ',
+  lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π',
+  rho: 'ρ', sigma: 'σ', tau: 'τ', upsilon: 'υ', phi: 'φ',
+  chi: 'χ', psi: 'ψ', omega: 'ω',
+  Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ',
+  Pi: 'Π', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω',
+  hbar: 'ℏ'
+};
+
+/**
+ * Mathematical symbols map for LaTeX conversion
+ */
+const SYMBOL_MAP = {
+  times: '×', cdot: '·', pm: '±', mp: '∓', approx: '≈',
+  neq: '≠', ne: '≠', leq: '≤', le: '≤', geq: '≥', ge: '≥',
+  ll: '≪', gg: '≫', propto: '∝', to: '→', rightarrow: '→',
+  leftarrow: '←', implies: '⟹', Longrightarrow: '⟹',
+  iff: '⟺', infty: '∞', partial: '∂', nabla: '∇',
+  sum: '∑', prod: '∏', int: '∫', oint: '∮',
+  forall: '∀', exists: '∃', in: '∈', notin: '∉',
+  subset: '⊂', cup: '∪', cap: '∩', circ: '°', degree: '°'
+};
+
+/**
+ * Extract balanced { ... } starting at startIdx
+ */
+function extractBraceGroup(str, startIdx) {
+  if (str[startIdx] !== '{') return null;
+  let depth = 0;
+  for (let i = startIdx; i < str.length; i++) {
+    if (str[i] === '{') depth++;
+    else if (str[i] === '}') {
+      depth--;
+      if (depth === 0) {
+        return {
+          content: str.slice(startIdx + 1, i),
+          endIdx: i + 1
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse raw math string into a semantic AST
+ */
+function parseMathNodes(raw) {
+  let s = (raw || '').trim();
+  if (s.startsWith('$$') && s.endsWith('$$')) s = s.slice(2, -2).trim();
+  else if (s.startsWith('$') && s.endsWith('$')) s = s.slice(1, -1).trim();
+
+  // Strip common LaTeX grouping / spacing
+  s = s.replace(/\\left([([{|])/g, '$1')
+       .replace(/\\right([)\]}|])/g, '$1')
+       .replace(/\\[,;!]/g, ' ')
+       .replace(/\\quad/g, '  ')
+       .replace(/\\qquad/g, '    ')
+       .replace(/\\(?:text|mathrm|mathbf)\{([^}]+)\}/g, '$1')
+       .replace(/\\cos/g, 'cos')
+       .replace(/\\sin/g, 'sin')
+       .replace(/\\tan/g, 'tan')
+       .replace(/\\det/g, 'det')
+       .replace(/\\log/g, 'log')
+       .replace(/\\ln/g, 'ln')
+       .replace(/\\lim/g, 'lim');
+
+  // Replace Greek & math symbol commands
+  s = s.replace(/\\([a-zA-Z]+)/g, (match, word) => {
+    if (GREEK_MAP[word]) return GREEK_MAP[word];
+    if (SYMBOL_MAP[word]) return SYMBOL_MAP[word];
+    return match;
+  });
+
+  const nodes = [];
+  let i = 0;
+
+  while (i < s.length) {
+    // 1. Fractions: \frac{num}{den}
+    if (s.startsWith('\\frac', i)) {
+      let cursor = i + 5;
+      while (cursor < s.length && /\s/.test(s[cursor])) cursor++;
+      let numGroup = extractBraceGroup(s, cursor);
+      let numContent = '';
+      if (numGroup) {
+        numContent = numGroup.content;
+        cursor = numGroup.endIdx;
+      } else if (cursor < s.length) {
+        numContent = s[cursor];
+        cursor++;
+      }
+
+      while (cursor < s.length && /\s/.test(s[cursor])) cursor++;
+      let denGroup = extractBraceGroup(s, cursor);
+      let denContent = '';
+      if (denGroup) {
+        denContent = denGroup.content;
+        cursor = denGroup.endIdx;
+      } else if (cursor < s.length) {
+        denContent = s[cursor];
+        cursor++;
+      }
+
+      nodes.push({
+        type: 'frac',
+        numerator: parseMathNodes(numContent),
+        denominator: parseMathNodes(denContent)
+      });
+      i = cursor;
+      continue;
+    }
+
+    // 2. Square root: \sqrt{radicand}
+    if (s.startsWith('\\sqrt', i)) {
+      let cursor = i + 5;
+      while (cursor < s.length && /\s/.test(s[cursor])) cursor++;
+      let radGroup = extractBraceGroup(s, cursor);
+      let radContent = '';
+      if (radGroup) {
+        radContent = radGroup.content;
+        cursor = radGroup.endIdx;
+      } else if (cursor < s.length) {
+        radContent = s[cursor];
+        cursor++;
+      }
+
+      nodes.push({
+        type: 'sqrt',
+        radicand: parseMathNodes(radContent)
+      });
+      i = cursor;
+      continue;
+    }
+
+    // 3. Subscripts and superscripts: D_n^2, \lambda_1, x_i, etc.
+    const subSupMatch = s.slice(i).match(/^([a-zA-Z0-9α-ωΑ-Ωℏ]+)(?:_(\{([^}]+)\}|[a-zA-Z0-9α-ωΑ-Ω+-]))?(?:\^(\{([^}]+)\}|[a-zA-Z0-9α-ωΑ-Ω+-]))?/);
+    if (subSupMatch && (subSupMatch[2] || subSupMatch[4])) {
+      const base = subSupMatch[1];
+      const sub = subSupMatch[3] || (subSupMatch[2] ? subSupMatch[2].replace(/^_/, '') : null);
+      const sup = subSupMatch[5] || (subSupMatch[4] ? subSupMatch[4].replace(/^\^/, '') : null);
+      nodes.push({
+        type: 'script',
+        base,
+        sub: sub ? parseMathNodes(sub) : null,
+        sup: sup ? parseMathNodes(sup) : null
+      });
+      i += subSupMatch[0].length;
+      continue;
+    }
+
+    nodes.push({ type: 'text', value: s[i] });
+    i++;
+  }
+
+  // Merge adjacent text nodes
+  const merged = [];
+  for (const node of nodes) {
+    if (node.type === 'text') {
+      if (merged.length > 0 && merged[merged.length - 1].type === 'text') {
+        merged[merged.length - 1].value += node.value;
+      } else {
+        merged.push({ ...node });
+      }
+    } else {
+      merged.push(node);
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * Render AST nodes into React elements
+ */
+function renderMathNodes(nodes, keyPrefix = 'm') {
+  return nodes.map((node, idx) => {
+    const k = `${keyPrefix}-${idx}`;
+    if (node.type === 'text') {
+      return <span key={k}>{node.value}</span>;
+    }
+    if (node.type === 'frac') {
+      return (
+        <span key={k} className="math-fraction">
+          <span className="math-numerator">{renderMathNodes(node.numerator, `${k}-num`)}</span>
+          <span className="math-denominator">{renderMathNodes(node.denominator, `${k}-den`)}</span>
+        </span>
+      );
+    }
+    if (node.type === 'sqrt') {
+      return (
+        <span key={k} className="math-sqrt">
+          <span className="math-radical">&radic;</span>
+          <span className="math-radicand">{renderMathNodes(node.radicand, `${k}-rad`)}</span>
+        </span>
+      );
+    }
+    if (node.type === 'script') {
+      return (
+        <span key={k} className="math-script-wrap">
+          {node.base}
+          {node.sub && <sub>{renderMathNodes(node.sub, `${k}-sub`)}</sub>}
+          {node.sup && <sup>{renderMathNodes(node.sup, `${k}-sup`)}</sup>}
+        </span>
+      );
+    }
+    return null;
+  });
+}
+
+/**
+ * Render formatted math
+ */
+function renderMath(latexString, isBlock = false, key = 'math') {
+  const nodes = parseMathNodes(latexString);
+  const elements = renderMathNodes(nodes, key);
+
+  if (isBlock) {
+    return (
+      <div key={key} className="math-display-block">
+        {elements}
+      </div>
+    );
+  }
+
+  return (
+    <span key={key} className="math-inline">
+      {elements}
+    </span>
+  );
+}
+
+/**
+ * Strict SVG Sanitizer: strips scripts, event handlers, and javascript: links
+ */
+function sanitizeSvg(rawSvg) {
+  if (!rawSvg) return '';
+  let svg = rawSvg.trim();
+
+  // Strip code block fences if passed inside
+  if (svg.startsWith('```')) {
+    svg = svg.replace(/^```[a-zA-Z]*\r?\n/, '').replace(/\r?\n```$/, '').trim();
+  }
+
+  // Remove <script> tags completely
+  svg = svg.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+
+  // Remove inline event handlers (onload, onerror, onclick, etc.)
+  svg = svg.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '');
+  svg = svg.replace(/\son\w+\s*=\s*[^\s>]+/gi, '');
+
+  // Remove javascript: URLs
+  svg = svg.replace(/(?:href|xlink:href)\s*=\s*(['"])\s*javascript:.*?\1/gi, '');
+
+  // Ensure responsive attributes and viewBox
+  svg = svg.replace(/<svg\b([^>]*)>/i, (match, attrs) => {
+    let newAttrs = attrs;
+    if (!/viewBox=/i.test(newAttrs)) {
+      const wMatch = newAttrs.match(/width=["']?(\d+)["']?/i);
+      const hMatch = newAttrs.match(/height=["']?(\d+)["']?/i);
+      if (wMatch && hMatch) {
+        newAttrs += ` viewBox="0 0 ${wMatch[1]} ${hMatch[1]}"`;
+      } else {
+        newAttrs += ` viewBox="0 0 650 360"`;
+      }
+    }
+    if (!/xmlns=/i.test(newAttrs)) {
+      newAttrs += ' xmlns="http://www.w3.org/2000/svg"';
+    }
+    return `<svg ${newAttrs.trim()}>`;
+  });
+
+  return svg;
+}
+
+/**
+ * Interactive SVG Diagram Card with Preview & Raw Code Tabs
+ */
+function SvgDiagramBlock({ svgContent, blockKey, onShowToast }) {
+  const [viewMode, setViewMode] = useState('preview'); // 'preview' | 'code'
+  const [copied, setCopied] = useState(false);
+
+  const cleanSvg = sanitizeSvg(svgContent);
+
+  const handleCopy = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(cleanSvg);
+      setCopied(true);
+      onShowToast?.('SVG diagram code copied to clipboard');
+      setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
+  return (
+    <div key={blockKey} className="svg-diagram-card">
+      <div className="svg-diagram-header">
+        <div className="svg-diagram-title">
+          <span style={{ fontSize: '15px' }}>📐</span>
+          <span>Engineering Diagram (SVG)</span>
+        </div>
+
+        <div className="svg-diagram-actions">
+          <button
+            type="button"
+            className={`svg-tab-btn ${viewMode === 'preview' ? 'active' : ''}`}
+            onClick={() => setViewMode('preview')}
+            title="View graphical diagram"
+          >
+            <IconEye size={12} />
+            <span>Diagram</span>
+          </button>
+
+          <button
+            type="button"
+            className={`svg-tab-btn ${viewMode === 'code' ? 'active' : ''}`}
+            onClick={() => setViewMode('code')}
+            title="View SVG source code"
+          >
+            <IconCode size={12} />
+            <span>SVG Code</span>
+          </button>
+
+          <button
+            type="button"
+            className="svg-action-btn"
+            onClick={handleCopy}
+            title="Copy SVG XML to clipboard"
+          >
+            {copied ? (
+              <>
+                <IconCheckCircle size={12} style={{ color: '#10B981' }} />
+                <span>Copied</span>
+              </>
+            ) : (
+              <>
+                <IconCopy size={12} />
+                <span>Copy SVG</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {viewMode === 'preview' ? (
+        <div
+          className="svg-diagram-preview"
+          dangerouslySetInnerHTML={{ __html: cleanSvg }}
+        />
+      ) : (
+        <pre
+          style={{
+            margin: 0,
+            padding: '12px 14px',
+            backgroundColor: '#16221c',
+            color: '#dbe7df',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '12px',
+            lineHeight: 1.5,
+            overflowX: 'auto',
+            whiteSpace: 'pre'
+          }}
+        >
+          <code>{cleanSvg}</code>
+        </pre>
+      )}
+    </div>
+  );
+}
 
 /**
  * Lightweight, zero-dependency Markdown & Rich Text Renderer
  * Supports: Headings, Bold, Italic, Code Blocks, Inline Code,
- * Interactive Checklists, Tables, Lists, Links, Blockquotes, and HRs.
+ * Interactive Checklists, Tables, Lists, Links, Blockquotes, HRs,
+ * LaTeX Math ($...$ and $$...$$), and Sanitized SVG Diagrams.
  */
 export default function MarkdownRenderer({
   content = '',
@@ -31,19 +412,24 @@ export default function MarkdownRenderer({
     }
   };
 
-  // Helper to parse inline styles: bold, italic, inline code, links
+  // Helper to parse inline styles: inline math, inline code, bold, italic, links
   const renderInline = (text) => {
     if (!text) return null;
 
     // Tokenize text into segments
-    // Matches: `code`, **bold**, *italic*, [link](url)
-    const regex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+    // Matches: `code`, $math$, **bold**, *italic*, [link](url)
+    const regex = /(`[^`]+`|\$[^$\n]+\$|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
     const parts = text.split(regex);
 
     return parts.map((part, i) => {
       if (!part) return null;
 
-      // Inline code
+      // Inline Math: $...$
+      if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
+        return renderMath(part.slice(1, -1), false, `im-${i}`);
+      }
+
+      // Inline code: `...`
       if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
         return (
           <code
@@ -62,7 +448,7 @@ export default function MarkdownRenderer({
         );
       }
 
-      // Bold
+      // Bold: **...**
       if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
         return (
           <strong key={i} style={{ color: 'var(--forest-950)', fontWeight: 700 }}>
@@ -71,7 +457,7 @@ export default function MarkdownRenderer({
         );
       }
 
-      // Italic
+      // Italic: *...*
       if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
         return (
           <em key={i} style={{ fontStyle: 'italic' }}>
@@ -104,7 +490,7 @@ export default function MarkdownRenderer({
     });
   };
 
-  // Process blocks: Headings, Code Blocks, Tables, Checklists, Lists, Blockquotes, Paragraphs
+  // Process blocks: Headings, Code Blocks, SVG Blocks, Math Blocks, Tables, Checklists, Lists, Blockquotes, Paragraphs
   const lines = content.split('\n');
   const elements = [];
   let lineIdx = 0;
@@ -114,7 +500,8 @@ export default function MarkdownRenderer({
 
     // 1. Code Block: ```lang
     if (line.trim().startsWith('```')) {
-      const lang = line.trim().slice(3).trim() || 'python';
+      const rawLang = line.trim().slice(3).trim();
+      const lang = rawLang.toLowerCase();
       const codeLines = [];
       lineIdx++;
       while (lineIdx < lines.length && !lines[lineIdx].trim().startsWith('```')) {
@@ -125,7 +512,22 @@ export default function MarkdownRenderer({
 
       const codeText = codeLines.join('\n');
       const blockKey = `code-${lineIdx}`;
-      const isPython = lang.toLowerCase().includes('python') || lang.toLowerCase() === 'py';
+
+      // Check if this is an SVG diagram
+      const isSvgBlock = lang === 'svg' || ((lang === 'xml' || lang === 'html') && codeText.includes('<svg') && codeText.includes('</svg>'));
+      if (isSvgBlock) {
+        elements.push(
+          <SvgDiagramBlock
+            key={blockKey}
+            svgContent={codeText}
+            blockKey={blockKey}
+            onShowToast={onShowToast}
+          />
+        );
+        continue;
+      }
+
+      const isPython = lang.includes('python') || lang === 'py';
 
       elements.push(
         <div
@@ -154,7 +556,7 @@ export default function MarkdownRenderer({
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               {isPython && <IconPython size={14} />}
-              <span>{lang || 'code'}</span>
+              <span>{rawLang || 'code'}</span>
             </span>
 
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -226,7 +628,70 @@ export default function MarkdownRenderer({
       continue;
     }
 
-    // 2. Markdown Table: starts with | and next line has |---|
+    // 2. Standalone Raw SVG block: <svg ... </svg>
+    if (line.trim().startsWith('<svg') && !line.trim().includes('</svg>')) {
+      const svgLines = [line];
+      lineIdx++;
+      while (lineIdx < lines.length && !lines[lineIdx].includes('</svg>')) {
+        svgLines.push(lines[lineIdx]);
+        lineIdx++;
+      }
+      if (lineIdx < lines.length) {
+        svgLines.push(lines[lineIdx]);
+        lineIdx++;
+      }
+      const rawSvgText = svgLines.join('\n');
+      elements.push(
+        <SvgDiagramBlock
+          key={`raw-svg-${lineIdx}`}
+          svgContent={rawSvgText}
+          blockKey={`raw-svg-${lineIdx}`}
+          onShowToast={onShowToast}
+        />
+      );
+      continue;
+    } else if (line.trim().startsWith('<svg') && line.trim().includes('</svg>')) {
+      elements.push(
+        <SvgDiagramBlock
+          key={`inline-svg-${lineIdx}`}
+          svgContent={line}
+          blockKey={`inline-svg-${lineIdx}`}
+          onShowToast={onShowToast}
+        />
+      );
+      lineIdx++;
+      continue;
+    }
+
+    // 3. Display Math Block: $$ ... $$
+    if (line.trim().startsWith('$$')) {
+      if (line.trim().endsWith('$$') && line.trim().length > 4) {
+        // Single-line $$math$$
+        const mathContent = line.trim().slice(2, -2);
+        elements.push(renderMath(mathContent, true, `dm-${lineIdx}`));
+        lineIdx++;
+        continue;
+      } else {
+        // Multiline $$
+        const mathLines = [];
+        const firstLine = line.trim().slice(2);
+        if (firstLine.trim()) mathLines.push(firstLine);
+        lineIdx++;
+        while (lineIdx < lines.length && !lines[lineIdx].trim().endsWith('$$')) {
+          mathLines.push(lines[lineIdx]);
+          lineIdx++;
+        }
+        if (lineIdx < lines.length) {
+          const lastLine = lines[lineIdx].trim().replace(/\$\$$/, '');
+          if (lastLine.trim()) mathLines.push(lastLine);
+          lineIdx++;
+        }
+        elements.push(renderMath(mathLines.join('\n'), true, `dm-${lineIdx}`));
+        continue;
+      }
+    }
+
+    // 4. Markdown Table: starts with | and next line has |---|
     if (
       line.trim().startsWith('|') &&
       lineIdx + 1 < lines.length &&
@@ -293,7 +758,7 @@ export default function MarkdownRenderer({
       }
     }
 
-    // 3. Headings
+    // 5. Headings
     if (line.startsWith('### ')) {
       elements.push(
         <h3
@@ -352,7 +817,7 @@ export default function MarkdownRenderer({
       continue;
     }
 
-    // 4. Horizontal Rule: ---
+    // 6. Horizontal Rule: ---
     if (line.trim() === '---' || line.trim() === '***') {
       elements.push(
         <hr
@@ -368,7 +833,7 @@ export default function MarkdownRenderer({
       continue;
     }
 
-    // 5. Checklist item: - [ ] or - [x]
+    // 7. Checklist item: - [ ] or - [x]
     const checklistMatch = line.match(/^[-*]\s+\[([ xX])\]\s+(.+)$/);
     if (checklistMatch) {
       const isChecked = checklistMatch[1].toLowerCase() === 'x';
@@ -411,7 +876,7 @@ export default function MarkdownRenderer({
       continue;
     }
 
-    // 6. Bullet List: - item or * item
+    // 8. Bullet List: - item or * item
     if (line.match(/^[-*]\s+(.+)$/)) {
       const listItems = [];
       while (lineIdx < lines.length && lines[lineIdx].match(/^[-*]\s+(.+)$/) && !lines[lineIdx].match(/^[-*]\s+\[[ xX]\]/)) {
@@ -441,7 +906,7 @@ export default function MarkdownRenderer({
       continue;
     }
 
-    // 7. Numbered List: 1. item
+    // 9. Numbered List: 1. item
     if (line.match(/^\d+\.\s+(.+)$/)) {
       const listItems = [];
       while (lineIdx < lines.length && lines[lineIdx].match(/^\d+\.\s+(.+)$/)) {
@@ -471,7 +936,7 @@ export default function MarkdownRenderer({
       continue;
     }
 
-    // 8. Blockquote: > text
+    // 10. Blockquote: > text
     if (line.startsWith('>')) {
       const quoteText = line.replace(/^>\s*/, '');
       elements.push(
@@ -495,12 +960,13 @@ export default function MarkdownRenderer({
       continue;
     }
 
-    // 9. Blank line or regular paragraph
+    // 11. Blank line
     if (line.trim() === '') {
       lineIdx++;
       continue;
     }
 
+    // 12. Regular paragraph
     elements.push(
       <p
         key={`p-${lineIdx}`}
@@ -519,4 +985,3 @@ export default function MarkdownRenderer({
 
   return <div className="markdown-body">{elements}</div>;
 }
-

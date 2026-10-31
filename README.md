@@ -97,7 +97,7 @@
   - Node.js native connect middleware (`server/aiPlugin.js`) for local development
   - Optional standalone Node server (`server/standalone.js`)
   - Serverless API functions (`api/ai/*.js`) for Vercel deployment
-- **AI Integrations**: Google Gemini API (`gemini-1.5-flash`), OpenAI API (`gpt-4o-mini`), or Zero-Config Local Pedagogical Demo Engine
+- **AI Integrations**: Google Gemini API (`gemini-3.8-flash`), OpenAI API (`gpt-4o-mini`), or Zero-Config Local Pedagogical Demo Engine
 
 ---
 
@@ -168,7 +168,7 @@ cp .env.example .env
 Open `.env` in any text editor and paste your free key from [Google AI Studio](https://aistudio.google.com/):
 ```env
 GEMINI_API_KEY=your_actual_gemini_api_key_here
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 AI_PROVIDER=gemini
 ```
 
@@ -213,7 +213,7 @@ StudyNest is pre-configured with [`vercel.json`](vercel.json) and [`api/`](api/)
 3. **Set Environment Variables in Vercel**:
    - In the project settings, add:
      - `GEMINI_API_KEY` = `your_gemini_api_key`
-     - `GEMINI_MODEL` = `gemini-1.5-flash`
+     - `GEMINI_MODEL` = `gemini-3.8-flash`
      - `AI_PROVIDER` = `gemini`
 4. Click **Deploy**. Your application will be live at `https://your-project.vercel.app` with both the frontend and serverless AI API working!
 

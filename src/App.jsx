@@ -355,7 +355,7 @@ export default function App() {
         />
 
         {/* Scrollable Page Container */}
-        <main className="page-scroll-area">
+        <main className={`page-scroll-area ${activeView === 'ai-assistant' ? 'page-scroll-area-ai' : ''}`}>
           {activeView === 'dashboard' && (
             <DashboardView
               profile={profile}

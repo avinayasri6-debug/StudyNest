@@ -54,11 +54,36 @@ export default function AIAssistantView({
   const [activeChatId, setActiveChatId] = useState(() => getAIActiveChatId() || null);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(true);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1024;
+    }
+    return false;
+  });
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState(null);
   const [savedNoteMsgId, setSavedNoteMsgId] = useState(null);
   const [apiError, setApiError] = useState(null);
+
+  // Close drawer on Escape key or when window resizes to mobile/tablet
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isHistoryOpen && typeof window !== 'undefined' && window.innerWidth < 1024) {
+        setIsHistoryOpen(false);
+      }
+    };
+    const handleResize = () => {
+      if (typeof window !== 'undefined' && window.innerWidth < 1024 && isHistoryOpen) {
+        setIsHistoryOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isHistoryOpen]);
 
   // Live status from backend
   const [aiStatus, setAiStatus] = useState({
@@ -148,6 +173,9 @@ export default function AIAssistantView({
     setActiveChatId(newChat.id);
     saveAIActiveChatId(newChat.id);
     setApiError(null);
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsHistoryOpen(false);
+    }
     if (textareaRef.current) {
       textareaRef.current.focus();
     }
@@ -165,6 +193,9 @@ export default function AIAssistantView({
       setActiveMode(targetChat.mode);
     }
     setApiError(null);
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsHistoryOpen(false);
+    }
   };
 
   // Delete chat
@@ -399,22 +430,50 @@ export default function AIAssistantView({
 
   return (
     <div className="ai-assistant-container">
-      {/* 1. Left Conversation History Sidebar */}
-      <aside className={`ai-history-sidebar ${isHistoryOpen ? 'open' : ''}`}>
+      {/* Mobile Drawer Backdrop */}
+      {isHistoryOpen && (
+        <div
+          className="ai-history-backdrop"
+          onClick={() => setIsHistoryOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* 1. Left Conversation History Sidebar / Slide-out Drawer */}
+      <aside
+        id="ai-history-drawer"
+        className={`ai-history-sidebar ${isHistoryOpen ? 'open' : ''}`}
+        aria-label="Study chat history"
+        aria-hidden={typeof window !== 'undefined' && window.innerWidth < 1024 ? !isHistoryOpen : false}
+      >
         <div className="ai-history-header">
-          <span className="ai-history-title">
+          <div className="ai-history-title">
             <IconMessageSquare size={16} />
             <span>Study Chats</span>
-          </span>
-          <button
-            type="button"
-            className="ai-new-chat-btn"
-            onClick={handleStartNewChat}
-            title="Start New Conversation"
-          >
-            <IconPlus size={14} />
-            <span>New Chat</span>
-          </button>
+            {conversations.length > 0 && (
+              <span className="ai-history-count-badge">{conversations.length}</span>
+            )}
+          </div>
+          <div className="ai-history-header-actions">
+            <button
+              type="button"
+              className="ai-new-chat-btn"
+              onClick={handleStartNewChat}
+              title="Start New Conversation"
+            >
+              <IconPlus size={14} />
+              <span className="ai-sidebar-new-label">New Chat</span>
+            </button>
+            <button
+              type="button"
+              className="ai-history-close-btn"
+              onClick={() => setIsHistoryOpen(false)}
+              aria-label="Close chat history"
+              title="Close chat history"
+            >
+              <IconX size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="ai-history-list">
@@ -471,16 +530,24 @@ export default function AIAssistantView({
           <div className="ai-top-bar-left">
             <button
               type="button"
-              className="ai-history-toggle-btn"
+              className={`ai-history-toggle-btn ${isHistoryOpen ? 'active' : ''}`}
               onClick={() => setIsHistoryOpen((prev) => !prev)}
-              title={isHistoryOpen ? 'Collapse chat history' : 'Expand chat history'}
+              aria-expanded={isHistoryOpen}
+              aria-controls="ai-history-drawer"
+              aria-label={isHistoryOpen ? 'Close chat history' : 'Open chat history'}
+              title={isHistoryOpen ? 'Close chat history' : 'Open chat history'}
             >
-              <IconMessageSquare size={17} />
+              <IconMessageSquare size={16} />
+              <span className="ai-history-toggle-label">Chats</span>
+              {conversations.length > 0 && (
+                <span className="ai-history-toggle-badge">{conversations.length}</span>
+              )}
             </button>
             <div className="ai-header-info">
               <div className="ai-header-title">
                 <IconSparkles size={18} style={{ color: 'var(--forest-800)' }} />
-                <span>StudyNest AI Academic Assistant</span>
+                <span className="ai-header-title-full">StudyNest AI Academic Assistant</span>
+                <span className="ai-header-title-short">AI Tutor</span>
               </div>
               <div className="ai-header-subtitle">
                 24/7 Socratic engineering mentor tailored to your Semester 1 curriculum
@@ -493,12 +560,14 @@ export default function AIAssistantView({
             {aiStatus.configured ? (
               <div className="ai-status-pill live" title={`Connected to ${aiStatus.provider} (${aiStatus.model})`}>
                 <span className="ai-status-dot" />
-                <span>Live AI ({aiStatus.provider === 'gemini' ? 'Gemini 1.5' : 'OpenAI'})</span>
+                <span className="ai-status-text-full">Live AI ({aiStatus.provider === 'gemini' ? (aiStatus.model ? `Gemini (${aiStatus.model.replace('gemini-', '')})` : 'Gemini') : 'OpenAI'})</span>
+                <span className="ai-status-text-short">Live AI</span>
               </div>
             ) : (
               <div className="ai-status-pill demo" title="Running in intelligent offline demo mode">
                 <span className="ai-status-dot" />
-                <span>Demo Mode</span>
+                <span className="ai-status-text-full">Demo Mode</span>
+                <span className="ai-status-text-short">Demo</span>
                 <button
                   type="button"
                   className="ai-setup-api-btn"
@@ -512,12 +581,12 @@ export default function AIAssistantView({
 
             <button
               type="button"
-              className="ai-new-chat-btn"
+              className="ai-new-chat-btn ai-top-new-chat-btn"
               onClick={handleStartNewChat}
-              style={{ backgroundColor: 'var(--bg-card-alt)', color: 'var(--forest-900)', border: '1px solid var(--border-card)' }}
+              title="Start New Conversation"
             >
               <IconPlus size={14} />
-              <span>New Topic</span>
+              <span className="ai-top-new-chat-label">New Chat</span>
             </button>
           </div>
         </header>
@@ -845,7 +914,7 @@ export default function AIAssistantView({
             <div className="ai-modal-body">
               <p>
                 StudyNest is currently operating in <strong>Curriculum Demo Mode</strong>.
-                To connect real live AI models (like Google Gemini 1.5 Flash or OpenAI), follow these simple steps:
+                To connect real live AI models (like Google Gemini 3.8 Flash or OpenAI), follow these simple steps:
               </p>
 
               <div className="ai-modal-step">
@@ -867,7 +936,7 @@ export default function AIAssistantView({
                   </p>
                   <div className="ai-code-snippet-box">
                     GEMINI_API_KEY=your_actual_gemini_api_key_here<br />
-                    GEMINI_MODEL=gemini-1.5-flash
+                    GEMINI_MODEL=gemini-3.8-flash
                   </div>
                 </div>
               </div>

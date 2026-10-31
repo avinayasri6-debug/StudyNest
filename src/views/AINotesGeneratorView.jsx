@@ -526,7 +526,7 @@ export default function AINotesGeneratorView({
           {aiStatus.configured ? (
             <div className="ai-status-pill live" title={`Connected to ${aiStatus.provider} (${aiStatus.model})`}>
               <span className="ai-status-dot" />
-              <span>Live AI ({aiStatus.provider === 'gemini' ? 'Gemini 1.5' : 'OpenAI'})</span>
+              <span>Live AI ({aiStatus.provider === 'gemini' ? (aiStatus.model ? `Gemini (${aiStatus.model.replace('gemini-', '')})` : 'Gemini') : 'OpenAI'})</span>
             </div>
           ) : (
             <div className="ai-status-pill demo" title="Running with offline engineering curriculum synthesis">
@@ -1111,9 +1111,12 @@ export default function AINotesGeneratorView({
                 type="button"
                 className="ai-tool-btn"
                 onClick={() => {
-                  if (revisionData?.content) {
-                    navigator.clipboard.writeText(revisionData.content);
-                    onShowToast?.('Revision content copied!');
+                  if (revisionData?.content && navigator.clipboard) {
+                    navigator.clipboard.writeText(revisionData.content)
+                      .then(() => onShowToast?.('Revision content copied!'))
+                      .catch(() => onShowToast?.('Unable to copy to clipboard'));
+                  } else {
+                    onShowToast?.('Clipboard access unavailable');
                   }
                 }}
               >
@@ -1251,7 +1254,7 @@ export default function AINotesGeneratorView({
             <div className="ai-modal-body">
               <p>
                 StudyNest is currently running in <strong>Curriculum Demo Mode</strong>.
-                To connect real live AI models (like Google Gemini 1.5 Flash or OpenAI), follow these simple steps:
+                To connect real live AI models (like Google Gemini 3.8 Flash or OpenAI), follow these simple steps:
               </p>
 
               <div className="ai-modal-step">
@@ -1270,7 +1273,7 @@ export default function AINotesGeneratorView({
                   <strong>Create a <code>.env</code> file in your project root</strong>
                   <div className="ai-code-snippet-box">
                     GEMINI_API_KEY=your_actual_gemini_api_key_here<br />
-                    GEMINI_MODEL=gemini-1.5-flash
+                    GEMINI_MODEL=gemini-3.8-flash
                   </div>
                 </div>
               </div>

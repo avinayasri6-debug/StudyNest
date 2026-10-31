@@ -12,16 +12,19 @@
   background-color: var(--bg-page);
 }
 
-/* History Sidebar / Drawer */
+/* Mobile Backdrop for History Drawer */
+.ai-history-backdrop {
+  display: none;
+}
+
+/* History Sidebar / Drawer Base */
 .ai-history-sidebar {
-  width: 290px;
-  min-width: 290px;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   height: 100%;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), width 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
   z-index: 20;
 }
 
@@ -31,6 +34,7 @@
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid rgba(20, 40, 28, 0.06);
+  gap: 8px;
 }
 
 .ai-history-title {
@@ -42,6 +46,46 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
+}
+
+.ai-history-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background-color: var(--sage-200);
+  color: var(--forest-900);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ai-history-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-history-close-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  border: 1px solid var(--border-card);
+  color: var(--forest-900);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ai-history-close-btn:hover {
+  background-color: var(--sage-100);
+  color: #DC2626;
 }
 
 .ai-new-chat-btn {
@@ -190,19 +234,48 @@
 .ai-history-toggle-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
+  gap: 6px;
+  padding: 6px 12px;
+  min-height: 34px;
   border-radius: var(--radius-sm);
   background-color: var(--bg-card-alt);
   border: 1px solid var(--border-card);
   color: var(--forest-900);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .ai-history-toggle-btn:hover {
   background-color: var(--sage-100);
+  border-color: var(--border-strong);
+}
+
+.ai-history-toggle-btn.active {
+  background-color: var(--forest-900);
+  color: #ffffff;
+  border-color: var(--forest-900);
+}
+
+.ai-history-toggle-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background-color: var(--sage-200);
+  color: var(--forest-900);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ai-history-toggle-btn.active .ai-history-toggle-badge {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
 }
 
 .ai-header-info {
@@ -217,6 +290,35 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.ai-header-title-short {
+  display: none;
+}
+
+.ai-status-text-short {
+  display: none;
+}
+
+.ai-top-new-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background-color: var(--forest-900) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--forest-900) !important;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ai-top-new-chat-btn:hover {
+  background-color: var(--forest-800) !important;
+  transform: translateY(-1px);
 }
 
 .ai-header-subtitle {
@@ -859,7 +961,9 @@
 .ai-modal-body {
   padding: 24px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   max-height: 70vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -909,61 +1013,482 @@
   background-color: var(--bg-card-warm);
 }
 
-/* Mobile & Tablet Responsiveness */
-@media (max-width: 900px) {
+/* ============================================================
+   1. Desktop Layout (Width >= 1024px)
+   - Side-by-side Study Chats sidebar and Chat Stage
+   - Smooth horizontal collapse/expand toggle
+   ============================================================ */
+@media (min-width: 1024px) {
+  .ai-history-sidebar {
+    width: 280px;
+    min-width: 280px;
+    position: relative;
+    transform: none !important;
+    opacity: 1;
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .ai-history-sidebar:not(.open) {
+    width: 0;
+    min-width: 0;
+    overflow: hidden;
+    border-right: none;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .ai-history-close-btn {
+    display: none !important;
+  }
+
+  .ai-history-backdrop {
+    display: none !important;
+  }
+
+  .ai-chat-stage {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* ============================================================
+   2. Tablet Layout (Width: 769px to 1023px)
+   - Compact overlay drawer or adaptive panel
+   - Clean spacing and unobstructed chat stage
+   ============================================================ */
+@media (min-width: 769px) and (max-width: 1023px) {
+  .ai-history-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background-color: rgba(14, 27, 19, 0.45);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    z-index: 35;
+    animation: aiBackdropFade 0.2s ease;
+  }
+
+  @keyframes aiBackdropFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
   .ai-history-sidebar {
     position: absolute;
     top: 0;
     bottom: 0;
     left: 0;
-    transform: translateX(-100%);
-    box-shadow: var(--shadow-modal);
+    width: 280px;
+    max-width: 75vw;
+    min-width: 0;
+    z-index: 40;
+    transform: translateX(-105%);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 4px 0 24px rgba(15, 23, 42, 0.22);
+    border-right: 1px solid var(--border-subtle);
   }
 
   .ai-history-sidebar.open {
     transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  .ai-history-sidebar:not(.open) {
+    pointer-events: none;
+  }
+
+  .ai-history-close-btn {
+    display: inline-flex;
+  }
+
+  .ai-chat-stage {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .ai-controls-strip {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+}
+
+/* ============================================================
+   3. Mobile Layout (Screens below 768px & iPhones)
+   - Study Chats sidebar hidden by default
+   - Opens as a slide-out overlay drawer when requested
+   - Auto-closes on selecting conversation, creating new chat, or backdrop click
+   - Main Chat Stage occupies 100% full width
+   - Input bar pinned above bottom nav with safe-area insets
+   - Zero horizontal overflow or overlapping
+   ============================================================ */
+@media (max-width: 768px) {
+  .ai-assistant-container {
+    height: 100%;
+    max-height: 100%;
+    width: 100%;
+    max-width: 100%;
+    border: none;
+    border-radius: 0;
+    overflow: hidden;
+  }
+
+  /* Fixed Mobile Drawer Backdrop */
+  .ai-history-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(14, 27, 19, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 110;
+    animation: aiBackdropFade 0.2s ease;
+    cursor: pointer;
+  }
+
+  /* Fixed Slide-out Mobile Drawer */
+  .ai-history-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(320px, 86vw);
+    max-width: 86vw;
+    min-width: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    z-index: 120;
+    transform: translateX(-105%);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 6px 0 32px rgba(0, 0, 0, 0.32);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-sidebar);
+  }
+
+  .ai-history-sidebar.open {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  .ai-history-sidebar:not(.open) {
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  /* Mobile Drawer Header */
+  .ai-history-header {
+    padding: 14px 16px;
+    padding-top: max(14px, env(safe-area-inset-top, 0px));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+
+  .ai-history-title {
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ai-history-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Mobile Close Button */
+  .ai-history-close-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    background-color: transparent;
+    border: 1px solid var(--border-card);
+    color: var(--forest-900);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .ai-history-close-btn:hover,
+  .ai-history-close-btn:active {
+    background-color: var(--sage-100);
+    color: #DC2626;
+    border-color: #F87171;
+  }
+
+  /* Main Chat Stage occupies full screen */
+  .ai-chat-stage {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Top Bar */
+  .ai-top-bar {
+    padding: 8px 12px;
+    gap: 8px;
+    flex-wrap: nowrap;
+    min-height: 52px;
+  }
+
+  .ai-top-bar-left {
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ai-history-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    min-height: 36px;
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-card-alt);
+    border: 1px solid var(--border-card);
+    color: var(--forest-900);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .ai-history-toggle-btn:hover {
+    background-color: var(--sage-100);
+  }
+
+  .ai-top-bar-right {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .ai-top-new-chat-btn {
+    padding: 6px 11px;
+    min-height: 34px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  /* Controls Strip */
+  .ai-controls-strip {
+    padding: 8px 12px;
+    gap: 8px;
     flex-direction: column;
     align-items: stretch;
+    flex-shrink: 0;
+  }
+
+  .ai-control-group {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .ai-subject-select {
     width: 100%;
+    font-size: 13px;
+    padding: 6px 10px;
+  }
+
+  .ai-mode-pills {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .ai-mode-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ai-mode-pill-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 12px;
+    padding: 5px 10px;
+  }
+
+  .ai-quick-actions-bar {
+    padding: 6px 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+
+  .ai-quick-actions-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ai-quick-chip {
+    flex-shrink: 0;
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+
+  /* Messages Area */
+  .ai-messages-scroll {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px;
+  }
+
+  .ai-message-bubble {
+    max-width: 95%;
+    padding: 12px 14px;
+    font-size: 13.5px;
+  }
+
+  /* Chat Input Area (Pinned above bottom nav) */
+  .ai-input-bar-container {
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+    background-color: #ffffff;
+    border-top: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  .ai-input-box-wrap {
+    padding: 8px 12px;
+    gap: 6px;
+  }
+
+  .ai-textarea {
+    font-size: 16px; /* Prevents auto-zoom on iOS */
+    min-height: 40px;
+    max-height: 120px;
+  }
+
+  .ai-send-btn {
+    padding: 8px 14px;
+    min-height: 38px;
+    font-size: 12.5px;
+  }
+
+  .ai-input-hints {
+    display: none; /* Hide desktop keyboard hints on mobile */
+  }
+}
+
+/* ============================================================
+   4. Small Mobile Screens & iPhones (Width <= 600px & 430px)
+   ============================================================ */
+@media (max-width: 600px) {
+  .ai-header-title-full {
+    display: none;
+  }
+
+  .ai-header-title-short {
+    display: inline;
+    font-size: 14.5px;
+  }
+
+  .ai-header-subtitle {
+    display: none;
+  }
+
+  .ai-status-text-full {
+    display: none;
+  }
+
+  .ai-status-text-short {
+    display: inline;
+    font-size: 11px;
   }
 
   .ai-starter-prompts-grid {
     grid-template-columns: 1fr;
   }
+}
 
-  .ai-message-bubble {
-    max-width: 92%;
+@media (max-width: 430px) {
+  .ai-history-sidebar {
+    width: min(295px, 86vw);
+  }
+
+  .ai-history-header {
+    padding: 12px 14px;
+  }
+
+  .ai-sidebar-new-label {
+    display: none; /* Keep drawer header clean so close button is prominent */
+  }
+
+  .ai-new-chat-btn {
+    padding: 6px 9px;
+  }
+
+  .ai-top-new-chat-label {
+    display: none;
+  }
+
+  .ai-top-new-chat-btn {
+    padding: 6px 9px;
+  }
+
+  .ai-top-bar {
+    padding: 6px 10px;
+  }
+
+  .ai-welcome-card {
+    padding: 16px 12px;
+  }
+
+  .ai-welcome-icon {
+    width: 42px;
+    height: 42px;
+    margin-bottom: 10px;
+  }
+
+  .ai-welcome-title {
+    font-size: 16px;
   }
 }
 
-@media (max-width: 768px) {
-  .ai-assistant-container {
-    height: calc(100dvh - 60px - 72px);
-    max-height: calc(100dvh - 60px - 72px);
+@media (max-width: 360px) {
+  .ai-history-sidebar {
+    width: min(265px, 88vw);
   }
 
-  .ai-textarea {
-    font-size: 16px; /* Prevents auto-zoom on iOS */
+  .ai-history-toggle-label {
+    display: none; /* Icon + badge only on very narrow screens */
   }
 
-  .ai-input-wrapper {
-    padding: 10px 12px;
+  .ai-history-toggle-btn {
+    padding: 5px 8px;
   }
 
-  .ai-messages-container {
-    padding: 12px 10px;
+  .ai-header-title-short {
+    font-size: 13px;
   }
 
-  .ai-message-bubble {
-    max-width: 96%;
-    padding: 12px 14px;
-    font-size: 13.5px;
+  .ai-setup-api-btn span {
+    display: none;
   }
 }
 

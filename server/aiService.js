@@ -230,10 +230,43 @@ You must understand the student's question type and calibrate your answer struct
 }
 
 /**
- * Call Google Gemini API
+ * Shared deadline constants ensuring full compatibility with Vercel's 60-second limit
  */
-async function callGemini({ messages, systemInstruction, apiKey, model }) {
-  const targetModel = model || process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const OVERALL_REQUEST_DEADLINE_MS = 57000; // 57 seconds total shared request budget
+const PRIMARY_ATTEMPT_MAX_TIMEOUT_MS = 15000; // 15 seconds maximum for primary Gemini attempt
+
+/**
+ * Call Google Gemini API with shared overall deadline and resilient fallback
+ */
+async function callGemini({
+  messages,
+  systemInstruction,
+  apiKey,
+  model,
+  isFallback = false,
+  overallDeadline
+}) {
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  const targetModel = model || primaryModel;
+  const fallbackModel = 'gemini-3.6-flash';
+
+  // 1. Establish or pass through the shared overall request deadline (57 seconds absolute timestamp)
+  const deadline = overallDeadline || (Date.now() + OVERALL_REQUEST_DEADLINE_MS);
+  const now = Date.now();
+  const remainingBudgetMs = deadline - now;
+
+  // If remaining time is critically low (< 1.5s), fail gracefully with a friendly timeout error
+  if (remainingBudgetMs <= 1500) {
+    throw new Error(`AI request reached the ${OVERALL_REQUEST_DEADLINE_MS / 1000}s overall execution deadline. Please try asking a more concise or specific question.`);
+  }
+
+  // 2. Compute individual timeout for this specific attempt:
+  // - Primary attempt: limited to 15 seconds maximum, or remaining budget if less
+  // - Fallback attempt: gets the full remaining budget up to the shared overall deadline
+  const attemptTimeoutMs = isFallback
+    ? remainingBudgetMs
+    : Math.min(PRIMARY_ATTEMPT_MAX_TIMEOUT_MS, remainingBudgetMs);
+
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   // Convert messages to Gemini format (roles: 'user' | 'model')
@@ -262,8 +295,16 @@ async function callGemini({ messages, systemInstruction, apiKey, model }) {
     }
   };
 
+  const attemptStartTime = Date.now();
+  // Fresh AbortController for each API attempt
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  let timedOut = false;
+
+  // Individual timer for this attempt
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, attemptTimeoutMs);
 
   let response;
   try {
@@ -274,15 +315,53 @@ async function callGemini({ messages, systemInstruction, apiKey, model }) {
       signal: controller.signal
     });
   } catch (fetchErr) {
-    clearTimeout(timeoutId);
-    // If request timed out or network stalled, gracefully try gemini-3.6-flash
-    if (fetchErr.name === 'AbortError' && targetModel !== 'gemini-3.6-flash') {
-      console.warn(`[StudyNest AI] Model ${targetModel} timed out. Retrying with gemini-3.6-flash...`);
-      return callGemini({ messages, systemInstruction, apiKey, model: 'gemini-3.6-flash' });
+    const elapsedMs = Date.now() - attemptStartTime;
+    const isAbort = timedOut || controller.signal.aborted || fetchErr.name === 'AbortError';
+
+    if (isAbort) {
+      // Primary attempt timed out at 15s (or remaining budget) -> trigger fallback with remaining time up to overall deadline
+      if (!isFallback && targetModel !== fallbackModel) {
+        const remainingForFallback = deadline - Date.now();
+        if (remainingForFallback > 2000) {
+          console.warn(`[StudyNest AI] Primary model ${targetModel} timed out after ${elapsedMs}ms (primary limit: 15s). Triggering fallback to ${fallbackModel} with remaining ${(remainingForFallback / 1000).toFixed(1)}s (shared deadline: 57s total)...`);
+          return callGemini({
+            messages,
+            systemInstruction,
+            apiKey,
+            model: fallbackModel,
+            isFallback: true,
+            overallDeadline: deadline
+          });
+        }
+      }
+
+      console.error(`[StudyNest AI] Model ${targetModel} timed out after ${elapsedMs}ms (attempt limit: ${attemptTimeoutMs}ms, shared deadline: 57s).`);
+      throw new Error(`AI request timed out after ${(elapsedMs / 1000).toFixed(1)}s while generating the response. Please try asking a more concise question or breaking it into parts.`);
+    }
+
+    // Network level error (e.g., DNS, connection reset)
+    console.error(`[StudyNest AI] Model ${targetModel} network error after ${elapsedMs}ms:`, fetchErr.message);
+    if (!isFallback && targetModel !== fallbackModel) {
+      const remainingForFallback = deadline - Date.now();
+      if (remainingForFallback > 2000) {
+        console.warn(`[StudyNest AI] Retrying network failure once with fallback model ${fallbackModel} (remaining: ${(remainingForFallback / 1000).toFixed(1)}s)...`);
+        return callGemini({
+          messages,
+          systemInstruction,
+          apiKey,
+          model: fallbackModel,
+          isFallback: true,
+          overallDeadline: deadline
+        });
+      }
     }
     throw fetchErr;
+  } finally {
+    // Always clear individual timer
+    clearTimeout(timeoutId);
   }
-  clearTimeout(timeoutId);
+
+  const elapsedMs = Date.now() - attemptStartTime;
 
   if (!response.ok) {
     let errorDetail = '';
@@ -293,17 +372,31 @@ async function callGemini({ messages, systemInstruction, apiKey, model }) {
       errorDetail = await response.text();
     }
 
-    // If model returns 404 (retired model), 503 (high demand spike), or 429 (rate limit), fail over to gemini-3.6-flash
-    if ((response.status === 404 || response.status === 503 || response.status === 429) && targetModel !== 'gemini-3.6-flash') {
-      console.warn(`[StudyNest AI] Model ${targetModel} returned HTTP ${response.status} (${errorDetail.slice(0, 100)}). Retrying with gemini-3.6-flash...`);
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      return callGemini({ messages, systemInstruction, apiKey, model: 'gemini-3.6-flash' });
+    // If primary model returns 404, 503, or 429, fail over once to stable gemini-3.6-flash using remaining time
+    if ((response.status === 404 || response.status === 503 || response.status === 429) && !isFallback && targetModel !== fallbackModel) {
+      const remainingForFallback = deadline - Date.now();
+      if (remainingForFallback > 2000) {
+        console.warn(`[StudyNest AI] Primary model ${targetModel} returned HTTP ${response.status} after ${elapsedMs}ms (${errorDetail.slice(0, 100)}). Retrying once with fallback model ${fallbackModel} with remaining ${(remainingForFallback / 1000).toFixed(1)}s (deadline: 57s total)...`);
+        await new Promise((resolve) => setTimeout(resolve, Math.min(800, remainingForFallback - 1500)));
+        return callGemini({
+          messages,
+          systemInstruction,
+          apiKey,
+          model: fallbackModel,
+          isFallback: true,
+          overallDeadline: deadline
+        });
+      }
     }
 
+    console.error(`[StudyNest AI] Model ${targetModel} failed with HTTP ${response.status} after ${elapsedMs}ms: ${errorDetail.slice(0, 150)}`);
+
     if (response.status === 400 && errorDetail.toLowerCase().includes('api key')) {
-      throw new Error(`Google Gemini API Key invalid or expired. Please verify your GEMINI_API_KEY in .env. Details: ${errorDetail}`);
+      throw new Error(`Google Gemini API Key invalid or expired. Please verify your GEMINI_API_KEY in .env.`);
     } else if (response.status === 429) {
-      throw new Error(`Gemini rate limit reached. Please wait a minute or check your quota at https://aistudio.google.com/.`);
+      throw new Error(`Gemini rate limit / quota exceeded. Please wait a minute or check your quota at https://aistudio.google.com/.`);
+    } else if (response.status === 503) {
+      throw new Error(`Google Gemini service is temporarily unavailable or overloaded (HTTP 503). Please try again shortly.`);
     } else {
       throw new Error(`Google Gemini API error (HTTP ${response.status}): ${errorDetail}`);
     }
@@ -312,6 +405,8 @@ async function callGemini({ messages, systemInstruction, apiKey, model }) {
   const data = await response.json();
   const candidate = data.candidates?.[0];
   const text = candidate?.content?.parts?.map((p) => p.text).join('') || '';
+
+  console.log(`[StudyNest AI] Model ${targetModel} responded successfully in ${elapsedMs}ms (${text.length} chars). Total request budget remaining: ${((deadline - Date.now()) / 1000).toFixed(1)}s.`);
 
   if (!text) {
     if (candidate?.finishReason === 'SAFETY') {
@@ -331,7 +426,7 @@ async function callGemini({ messages, systemInstruction, apiKey, model }) {
 /**
  * Call OpenAI / OpenAI-compatible API
  */
-async function callOpenAi({ messages, systemInstruction, apiKey, baseUrl, model }) {
+async function callOpenAi({ messages, systemInstruction, apiKey, baseUrl, model, timeoutMs = 45000 }) {
   const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
   const formattedMessages = [
@@ -349,14 +444,33 @@ async function callOpenAi({ messages, systemInstruction, apiKey, baseUrl, model 
     max_tokens: 3000
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(payload)
-  });
+  const startTime = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } catch (fetchErr) {
+    const elapsedMs = Date.now() - startTime;
+    if (controller.signal.aborted || fetchErr.name === 'AbortError') {
+      console.error(`[StudyNest AI] OpenAI model ${model} timed out after ${elapsedMs}ms.`);
+      throw new Error(`OpenAI request timed out after ${(elapsedMs / 1000).toFixed(1)}s while generating response.`);
+    }
+    throw fetchErr;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const elapsedMs = Date.now() - startTime;
 
   if (!response.ok) {
     let errorDetail = '';
@@ -366,6 +480,8 @@ async function callOpenAi({ messages, systemInstruction, apiKey, baseUrl, model 
     } catch {
       errorDetail = await response.text();
     }
+
+    console.error(`[StudyNest AI] OpenAI model ${model} failed with HTTP ${response.status} after ${elapsedMs}ms: ${errorDetail.slice(0, 150)}`);
 
     if (response.status === 401) {
       throw new Error(`OpenAI API Key invalid or unauthorized. Please verify your OPENAI_API_KEY in .env.`);
@@ -378,6 +494,8 @@ async function callOpenAi({ messages, systemInstruction, apiKey, baseUrl, model 
 
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content || '';
+
+  console.log(`[StudyNest AI] OpenAI model ${model} responded successfully in ${elapsedMs}ms.`);
 
   if (!text) {
     throw new Error('OpenAI API returned an empty response.');

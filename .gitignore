@@ -59,6 +59,8 @@ Thumbs.db
 [Dd]esktop.ini
 
 # IDE & Editor Specific
+*.bak
+*.tmp
 .idea/
 .vscode/*
 !.vscode/extensions.json

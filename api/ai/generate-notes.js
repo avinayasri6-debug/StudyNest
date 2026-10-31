@@ -1,5 +1,7 @@
 import { processGenerateNoteRequest, loadEnvironment } from '../../server/aiService.js';
 
+export const maxDuration = 60;
+
 export default async function handler(req, res) {
   loadEnvironment();
   res.setHeader('Access-Control-Allow-Origin', '*');

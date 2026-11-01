@@ -1083,14 +1083,22 @@ export default function ExamPrepView({
 
           {/* Difficulty & Search Bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '18px', flexWrap: 'wrap' }}>
-            <div className="search-bar-wrap" style={{ flex: '1 1 280px', maxWidth: '420px' }}>
-              <IconSearch size={15} className="search-icon-pos" />
+            <div style={{ position: 'relative', flex: '1 1 280px', maxWidth: '420px' }}>
+              <IconSearch size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input
                 type="text"
-                className="search-input"
-                placeholder="Search questions, topics, units..."
+                placeholder="Filter questions, topics, units..."
                 value={bankSearchTerm}
                 onChange={(e) => setBankSearchTerm(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 14px 8px 36px',
+                  borderRadius: 'var(--radius-full)',
+                  border: '1px solid var(--border-card)',
+                  backgroundColor: '#FFFFFF',
+                  fontSize: '13px',
+                  color: 'var(--text-main)'
+                }}
               />
             </div>
 

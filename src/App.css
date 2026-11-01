@@ -63,27 +63,28 @@
 
 .sidebar-nav-container {
   flex: 1;
-  padding: 18px 14px;
+  padding: 16px 14px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .sidebar-nav-label {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-muted);
-  padding: 8px 12px 4px;
+  color: var(--sage-600);
+  padding: 4px 14px 4px;
+  margin-bottom: 2px;
 }
 
 .sidebar-nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 11px 15px;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-size: 14px;
@@ -92,6 +93,19 @@
   position: relative;
   text-align: left;
   width: 100%;
+}
+
+.sidebar-nav-item .nav-icon {
+  flex-shrink: 0;
+}
+
+.sidebar-nav-label-text {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
 }
 
 .sidebar-nav-item:hover {
@@ -1540,6 +1554,12 @@
     transform: translateX(-100%);
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.22);
     z-index: 100;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .sidebar .nav-badge {
+    display: none !important;
   }
 
   .sidebar.open {
@@ -1677,8 +1697,16 @@
     max-height: calc(100dvh - 64px - 60px - env(safe-area-inset-bottom, 0px));
   }
 
+  .nav-left-section {
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+
   .search-bar-wrap {
-    width: 170px;
+    flex: 1;
+    max-width: 260px;
+    min-width: 140px;
   }
 
   .welcome-section {
@@ -1754,11 +1782,17 @@
 @media (max-width: 480px) {
   .top-navbar {
     height: 58px;
-    padding: 0 12px;
+    padding: 0 10px;
+  }
+
+  .nav-left-section {
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
   }
 
   .nav-right-section {
-    gap: 8px;
+    gap: 6px;
   }
 
   .top-profile-label {
@@ -1766,40 +1800,39 @@
   }
 
   .term-pill-badge {
-    display: none;
-  }
-
-  .streak-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     padding: 4px 8px;
     font-size: 11px;
+    border-radius: var(--radius-full);
+  }
+
+  .term-pill-dot {
+    width: 5px;
+    height: 5px;
   }
 
   .mobile-search-trigger {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    display: none !important;
   }
 
   .search-bar-wrap {
-    display: none;
+    display: block !important;
+    flex: 1;
+    max-width: 200px;
+    min-width: 100px;
+    width: auto;
   }
 
-  .search-bar-wrap.mobile-active {
-    display: flex !important;
-    position: absolute;
-    inset: 8px 10px;
-    width: auto !important;
-    max-width: none !important;
-    z-index: 60;
-    background-color: #FFFFFF;
-    border-radius: var(--radius-full);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  }
-
-  .search-bar-wrap.mobile-active .search-input {
+  .search-input {
     width: 100%;
-    padding-right: 36px;
-    font-size: 16px !important;
+    padding: 6px 10px 6px 28px;
+    font-size: 12.5px;
+  }
+
+  .search-icon-pos {
+    left: 8px;
   }
 
   .add-task-form {
@@ -1876,11 +1909,6 @@
 
   .subject-card {
     padding: 16px 14px;
-  }
-
-  .streak-indicator {
-    padding: 3px 6px;
-    font-size: 10.5px;
   }
 }
 

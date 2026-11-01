@@ -4,14 +4,10 @@ import {
   IconDashboard,
   IconBook,
   IconPython,
-  IconCalendar,
-  IconNotes,
-  IconQuiz,
-  IconProgress,
   IconVideo,
+  IconCalendar,
   IconAward,
   IconSparkles,
-  IconFileText,
   IconX
 } from './Icons';
 
@@ -25,16 +21,12 @@ export default function Sidebar({
 }) {
   const NAV_ITEMS = [
     { id: 'dashboard', label: 'Dashboard', icon: IconDashboard },
-    { id: 'ai-assistant', label: 'AI Study Assistant', icon: IconSparkles, badge: 'AI Tutor' },
-    { id: 'ai-notes', label: 'AI Notes Generator', icon: IconFileText, badge: 'Smart Gen' },
-    { id: 'subjects', label: 'My Subjects', icon: IconBook, badge: '7 Courses' },
-    { id: 'python', label: 'Python Academy', icon: IconPython, badge: 'Practice & Labs' },
-    { id: 'videos', label: 'Video Learning Hub', icon: IconVideo, badge: '26+ Lectures' },
-    { id: 'exam-prep', label: 'Exam Centre', icon: IconAward, badge: 'Mock Tests' },
-    { id: 'planner', label: 'Smart Study Planner', icon: IconCalendar, badge: 'Planner & Timer' },
-    { id: 'notes', label: 'Smart Notes', icon: IconNotes, badge: 'Digital Notebook' },
-    { id: 'quizzes', label: 'Quizzes', icon: IconQuiz },
-    { id: 'progress', label: 'Progress Analytics', icon: IconProgress, badge: 'Reports' }
+    { id: 'ai-assistant', label: 'AI Study Assistant', icon: IconSparkles },
+    { id: 'subjects', label: 'My Courses', icon: IconBook },
+    { id: 'python', label: 'Python Academy', icon: IconPython },
+    { id: 'videos', label: 'Video Learning Hub', icon: IconVideo },
+    { id: 'exam-prep', label: 'Exam Centre', icon: IconAward },
+    { id: 'planner', label: 'Study Planner', icon: IconCalendar }
   ];
 
   const handleItemClick = (id) => {
@@ -95,8 +87,7 @@ export default function Sidebar({
                 onClick={() => handleItemClick(item.id)}
               >
                 <Icon size={19} className="nav-icon" />
-                <span>{item.label}</span>
-                {item.badge && <span className="nav-badge">{item.badge}</span>}
+                <span className="sidebar-nav-label-text">{item.label}</span>
               </button>
             );
           })}

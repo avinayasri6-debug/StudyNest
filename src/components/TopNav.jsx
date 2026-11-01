@@ -2,14 +2,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   IconMenu,
   IconSearch,
-  IconBell,
   IconX,
   IconBook,
   IconPython,
-  IconNotes,
+  IconVideo,
   IconCalendar,
   IconCheckCircle,
-  IconVideo,
+  IconAward,
   IconSparkles
 } from './Icons';
 import { SEMESTER_1_SUBJECTS, getAllSubjectTopics } from '../data/subjectsData';
@@ -23,14 +22,10 @@ export default function TopNav({
   onToggleSidebar,
   searchTerm,
   onSearchChange,
-  notes = [],
   assignments = [],
-  onNavigateToResult,
-  studyStreakDays = 0,
-  onShowToast
+  onNavigateToResult
 }) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const searchWrapRef = useRef(null);
 
   // Close dropdown on click outside
@@ -38,7 +33,6 @@ export default function TopNav({
     function handleClickOutside(event) {
       if (searchWrapRef.current && !searchWrapRef.current.contains(event.target)) {
         setIsSearchOpen(false);
-        setIsMobileSearchOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -47,32 +41,44 @@ export default function TopNav({
 
   const query = searchTerm.trim().toLowerCase();
 
-  // Search results compilation
+  // Search results compilation matching primary sections
   const searchResults = {
     subjects: [],
     topics: [],
     pythonLessons: [],
     videos: [],
-    notes: [],
+    exams: [],
     assignments: []
   };
 
   if (query.length >= 2) {
-    // 1. Subjects
+    // 1. Courses (Subjects)
     SEMESTER_1_SUBJECTS.forEach((s) => {
       if (s.title.toLowerCase().includes(query) || s.code.toLowerCase().includes(query) || s.shortName.toLowerCase().includes(query)) {
         searchResults.subjects.push(s);
       }
-      // 2. Topics
+      // 2. Syllabus Topics
       const subTopics = getAllSubjectTopics(s);
       subTopics.forEach((t) => {
         if (t.name.toLowerCase().includes(query)) {
           searchResults.topics.push({ ...t, subject: s });
         }
       });
+      // 3. Exam Prep / Mock Papers
+      if (
+        s.title.toLowerCase().includes(query) ||
+        s.code.toLowerCase().includes(query) ||
+        'exam mock test question bank paper'.includes(query)
+      ) {
+        searchResults.exams.push({
+          id: `exam-${s.id}`,
+          title: `${s.shortName} Mock Exam & Practice Paper`,
+          subject: s
+        });
+      }
     });
 
-    // 3. Python Lessons & Practice Lab Exercises
+    // 4. Python Lessons & Practice Lab Exercises
     PYTHON_MODULES.forEach((m) => {
       if (
         m.title.toLowerCase().includes(query) ||
@@ -98,7 +104,7 @@ export default function TopNav({
       }
     });
 
-    // 4. Video Lessons
+    // 5. Video Lectures
     VIDEO_LESSONS.forEach((v) => {
       if (
         v.title.toLowerCase().includes(query) ||
@@ -111,16 +117,9 @@ export default function TopNav({
       }
     });
 
-    // 5. Notes
-    notes.forEach((n) => {
-      if (n.title.toLowerCase().includes(query) || (n.content && n.content.toLowerCase().includes(query))) {
-        searchResults.notes.push(n);
-      }
-    });
-
-    // 6. Assignments
+    // 6. Assignments & Tasks
     assignments.forEach((a) => {
-      if (a.title.toLowerCase().includes(query)) {
+      if (a.title.toLowerCase().includes(query) || (a.subjectTag && a.subjectTag.toLowerCase().includes(query))) {
         searchResults.assignments.push(a);
       }
     });
@@ -131,13 +130,12 @@ export default function TopNav({
     searchResults.topics.length +
     searchResults.pythonLessons.length +
     searchResults.videos.length +
-    searchResults.notes.length +
+    searchResults.exams.length +
     searchResults.assignments.length;
 
   const handleResultClick = (target) => {
     onNavigateToResult(target);
     setIsSearchOpen(false);
-    setIsMobileSearchOpen(false);
     onSearchChange('');
   };
 
@@ -161,13 +159,13 @@ export default function TopNav({
           <IconMenu size={20} />
         </button>
 
-        {/* Global Search Bar */}
-        <div className={`search-bar-wrap ${isMobileSearchOpen ? 'mobile-active' : ''}`} ref={searchWrapRef}>
+        {/* Single Global Search Bar */}
+        <div className="search-bar-wrap" ref={searchWrapRef}>
           <IconSearch size={16} className="search-icon-pos" />
           <input
             type="text"
             className="search-input"
-            placeholder="Search subjects, topics, notes, Python..."
+            placeholder="Search courses, topics, exams, Python..."
             value={searchTerm}
             onChange={(e) => {
               onSearchChange(e.target.value);
@@ -176,36 +174,16 @@ export default function TopNav({
             onFocus={() => {
               if (query.length >= 2) setIsSearchOpen(true);
             }}
+            aria-label="Search courses, topics, exams, and Python lessons"
           />
-          {searchTerm && !isMobileSearchOpen && (
+          {searchTerm && (
             <button
               type="button"
               onClick={() => {
                 onSearchChange('');
                 setIsSearchOpen(false);
               }}
-              style={{
-                position: 'absolute',
-                right: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--text-muted)',
-                padding: '2px'
-              }}
-              aria-label="Clear search"
-            >
-              <IconX size={14} />
-            </button>
-          )}
-
-          {isMobileSearchOpen && (
-            <button
-              type="button"
-              onClick={() => {
-                setIsMobileSearchOpen(false);
-                setIsSearchOpen(false);
-                onSearchChange('');
-              }}
+              className="search-clear-btn"
               style={{
                 position: 'absolute',
                 right: '10px',
@@ -213,25 +191,29 @@ export default function TopNav({
                 transform: 'translateY(-50%)',
                 color: 'var(--text-muted)',
                 padding: '4px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
-              aria-label="Close mobile search"
+              aria-label="Clear search query"
             >
-              <IconX size={16} />
+              <IconX size={14} />
             </button>
           )}
 
           {/* Search Dropdown Results */}
           {isSearchOpen && query.length >= 2 && (
             <div
+              className="search-results-dropdown"
               style={{
                 position: 'absolute',
                 top: 'calc(100% + 8px)',
                 left: 0,
                 width: '420px',
-                maxWidth: '90vw',
+                maxWidth: 'calc(100vw - 32px)',
                 backgroundColor: '#FFFFFF',
                 borderRadius: 'var(--radius-md)',
                 boxShadow: 'var(--shadow-elevation)',
@@ -239,7 +221,7 @@ export default function TopNav({
                 padding: '12px',
                 maxHeight: '440px',
                 overflowY: 'auto',
-                zIndex: 90
+                zIndex: 120
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -267,18 +249,18 @@ export default function TopNav({
               >
                 <IconSparkles size={16} style={{ color: 'var(--forest-900)' }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>Ask AI Assistant: "{searchTerm}"</div>
+                  <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>Ask AI Study Assistant: "{searchTerm}"</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Get step-by-step Socratic engineering explanation</div>
                 </div>
               </div>
 
               {totalResultsCount === 0 && (
                 <div style={{ padding: '16px', textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)' }}>
-                  No exact matching subjects, topics, notes, or Python lessons found.
+                  No exact matching courses, topics, exams, or Python lessons found.
                 </div>
               )}
 
-              {/* Subjects Group */}
+              {/* Courses Group */}
               {searchResults.subjects.length > 0 && (
                 <div style={{ marginBottom: '10px' }}>
                   <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--forest-700)', padding: '4px 6px' }}>
@@ -366,8 +348,12 @@ export default function TopNav({
                     >
                       <IconPython size={14} style={{ color: 'var(--forest-700)' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>Module {pym.number}: {pym.title}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Estimated: {pym.duration}</div>
+                        <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>
+                          {pym.isPractice ? pym.title : `Module ${pym.number}: ${pym.title}`}
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          {pym.isPractice ? pym.exercise.category : `Estimated: ${pym.duration}`}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -380,7 +366,7 @@ export default function TopNav({
                   <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--forest-700)', padding: '4px 6px' }}>
                     VIDEO LECTURES
                   </div>
-                  {searchResults.videos.map((vid) => (
+                  {searchResults.videos.slice(0, 4).map((vid) => (
                     <div
                       key={vid.id}
                       onClick={() => handleResultClick({ type: 'video', video: vid })}
@@ -406,16 +392,16 @@ export default function TopNav({
                 </div>
               )}
 
-              {/* Notes Group */}
-              {searchResults.notes.length > 0 && (
+              {/* Exam Centre Group */}
+              {searchResults.exams.length > 0 && (
                 <div style={{ marginBottom: '10px' }}>
                   <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--forest-700)', padding: '4px 6px' }}>
-                    PERSONAL NOTES
+                    EXAM CENTRE
                   </div>
-                  {searchResults.notes.map((n) => (
+                  {searchResults.exams.slice(0, 4).map((ex) => (
                     <div
-                      key={n.id}
-                      onClick={() => handleResultClick({ type: 'note', noteId: n.id })}
+                      key={ex.id}
+                      onClick={() => handleResultClick({ type: 'exam-prep', subject: ex.subject })}
                       style={{
                         padding: '8px 10px',
                         borderRadius: '6px',
@@ -428,10 +414,10 @@ export default function TopNav({
                         marginBottom: '4px'
                       }}
                     >
-                      <IconNotes size={14} style={{ color: 'var(--forest-700)' }} />
+                      <IconAward size={14} style={{ color: 'var(--forest-700)' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>{n.title}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{n.subjectCode} · {n.updatedAt}</div>
+                        <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>{ex.title}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{ex.subject.code} · Model Papers & Solutions</div>
                       </div>
                     </div>
                   ))}
@@ -442,12 +428,12 @@ export default function TopNav({
               {searchResults.assignments.length > 0 && (
                 <div>
                   <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--forest-700)', padding: '4px 6px' }}>
-                    ASSIGNMENTS
+                    STUDY PLANNER & ASSIGNMENTS
                   </div>
                   {searchResults.assignments.map((asg) => (
                     <div
                       key={asg.id}
-                      onClick={() => handleResultClick({ type: 'assignment', assignmentId: asg.id })}
+                      onClick={() => handleResultClick({ type: 'planner', assignmentId: asg.id })}
                       style={{
                         padding: '8px 10px',
                         borderRadius: '6px',
@@ -475,37 +461,11 @@ export default function TopNav({
       </div>
 
       <div className="nav-right-section">
-        {/* Mobile Search Button */}
-        <button
-          type="button"
-          className="header-icon-btn mobile-search-trigger"
-          aria-label="Open search bar"
-          onClick={() => setIsMobileSearchOpen(true)}
-        >
-          <IconSearch size={18} />
-        </button>
-
-        {/* Semester 1 indicator */}
+        {/* Semester indicator */}
         <div className="term-pill-badge" title="Active Academic Session">
           <span className="term-pill-dot" />
-          <span>Semester 1</span>
+          <span>{profile?.semester || 'Semester 1'}</span>
         </div>
-
-        {/* Study Activity badge */}
-        <div className="streak-indicator" title="Logged Study Activity">
-          <span>{studyStreakDays > 0 ? `${studyStreakDays} Day Streak` : 'Term Active'}</span>
-        </div>
-
-        {/* Notifications */}
-        <button
-          type="button"
-          className="header-icon-btn"
-          aria-label="View notifications"
-          onClick={() => onShowToast('All 7 Semester 1 courses are in sync. Study data saved locally.')}
-        >
-          <IconBell size={18} />
-          <span className="notif-dot" />
-        </button>
 
         {/* Student Profile Quick Trigger */}
         <div

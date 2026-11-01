@@ -146,7 +146,7 @@ export default function DashboardView({
     return !nextScheduledSession ? tasks.filter((t) => !t.completed)[0] || null : null;
   }, [nextScheduledSession, tasks]);
 
-  // 7. Video Learning Hub integration metrics
+  // Video Learning Hub integration metrics
   const totalVideosCount = VIDEO_LESSONS.length;
   const completedVideosCount = completedVideoIds.length;
   const videoProgressPercent = totalVideosCount > 0 ? Math.min(100, Math.round((completedVideosCount / totalVideosCount) * 100)) : 0;
@@ -526,6 +526,92 @@ export default function DashboardView({
               <IconPlay size={13} />
               <span>{lastWatchedVideo ? 'Resume' : 'Watch Now'}</span>
             </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Exam Centre Quick Access */}
+      <section className="dashboard-section" aria-labelledby="exam-centre-heading">
+        <div className="section-header-row" style={{ marginBottom: '14px' }}>
+          <div>
+            <h2 id="exam-centre-heading" className="section-title">
+              Exam Preparation Centre
+            </h2>
+            <div className="section-subtitle">
+              Full semester mock examinations, timer-paced tests, step-by-step solutions, and curated question bank
+            </div>
+          </div>
+          <button
+            type="button"
+            className="section-action-btn"
+            onClick={() => onNavigate('exam-prep')}
+          >
+            <span>Enter Exam Centre</span>
+            <IconChevronRight size={14} />
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '14px' }}>
+          {/* Mock Exams Card */}
+          <div className="analytics-card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ color: 'var(--forest-900)', display: 'flex', alignItems: 'center' }}>
+                  <IconAward size={20} />
+                </div>
+                <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--forest-950)' }}>
+                  Semester 1 Mock Examinations
+                </span>
+              </div>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--forest-900)' }}>
+                7 Subjects
+              </span>
+            </div>
+            <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Realistic timed exams with automatic scoring, section-wise breakdown, and comprehensive engineering solutions.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px' }}>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Timer & Proctoring Ready</span>
+              <button
+                type="button"
+                className="add-task-btn"
+                style={{ padding: '6px 12px', fontSize: '12px' }}
+                onClick={() => onNavigate('exam-prep')}
+              >
+                <span>Take Mock Test</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Question Bank Card */}
+          <div className="analytics-card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ color: 'var(--forest-900)', display: 'flex', alignItems: 'center' }}>
+                  <IconCheckSquare size={19} />
+                </div>
+                <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--forest-950)' }}>
+                  Curated Engineering Question Bank
+                </span>
+              </div>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--forest-900)' }}>
+                35+ Questions
+              </span>
+            </div>
+            <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              High-yield university exam questions categorized by difficulty with formula breakdowns and diagrams.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px' }}>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Easy · Medium · Hard</span>
+              <button
+                type="button"
+                className="add-task-btn"
+                style={{ padding: '6px 12px', fontSize: '12px', backgroundColor: 'var(--forest-850)' }}
+                onClick={() => onNavigate('exam-prep')}
+              >
+                <span>Browse Bank</span>
+              </button>
+            </div>
           </div>
         </div>
       </section>

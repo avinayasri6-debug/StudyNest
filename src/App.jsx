@@ -6,18 +6,14 @@ import SubjectModal from './components/SubjectModal';
 import StudentProfileModal from './components/StudentProfileModal';
 import Toast from './components/Toast';
 
-// Views
+// Primary Section Views
 import DashboardView from './views/DashboardView';
 import SubjectsView from './views/SubjectsView';
 import PythonAcademyView from './views/PythonAcademyView';
-import StudyPlannerView from './views/StudyPlannerView';
-import NotesView from './views/NotesView';
-import QuizzesView from './views/QuizzesView';
-import ProgressView from './views/ProgressView';
 import VideoLearningView from './views/VideoLearningView';
 import ExamPrepView from './views/ExamPrepView';
+import StudyPlannerView from './views/StudyPlannerView';
 import AIAssistantView from './views/AIAssistantView';
-import AINotesGeneratorView from './views/AINotesGeneratorView';
 
 // Storage Service
 import {
@@ -32,7 +28,6 @@ import {
   getNotes,
   saveNotes,
   getQuizHistory,
-  saveQuizAttempt,
   getStudySessions,
   logStudySession,
   getAssignments,
@@ -54,13 +49,13 @@ import {
   getVideoPlaylists,
   saveVideoPlaylists,
   getVideoBookmarks,
-  saveVideoBookmarks,
-  getMockTestResults,
-  resetAllStudentData
+  saveVideoBookmarks
 } from './services/storage';
 
 import { SEMESTER_1_SUBJECTS } from './data/subjectsData';
 import './App.css';
+
+const VALID_VIEWS = ['dashboard', 'ai-assistant', 'subjects', 'python', 'videos', 'exam-prep', 'planner'];
 
 export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
@@ -69,7 +64,6 @@ export default function App() {
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
-  const [quizInitialSubject, setQuizInitialSubject] = useState('math101');
 
   // ==========================================
   // PERSISTENT DATA STATES
@@ -79,7 +73,7 @@ export default function App() {
   const [completedModuleIds, setCompletedModuleIdsState] = useState(() => getPythonCompletedLessons());
   const [tasks, setTasksState] = useState(() => getTasks());
   const [notes, setNotesState] = useState(() => getNotes());
-  const [quizHistory, setQuizHistoryState] = useState(() => getQuizHistory());
+  const [quizHistory] = useState(() => getQuizHistory());
   const [studySessions, setStudySessionsState] = useState(() => getStudySessions());
   const [completedVideoIds, setCompletedVideoIdsState] = useState(() => getCompletedVideos());
   const [watchLaterVideoIds, setWatchLaterVideoIdsState] = useState(() => getWatchLaterVideos());
@@ -90,7 +84,6 @@ export default function App() {
   const [customVideos, setCustomVideosState] = useState(() => getCustomVideos());
   const [videoPlaylists, setVideoPlaylistsState] = useState(() => getVideoPlaylists());
   const [videoBookmarks, setVideoBookmarksState] = useState(() => getVideoBookmarks());
-  const [mockTestResults, setMockTestResultsState] = useState(() => getMockTestResults());
 
   // Keep storage states in sync with external events
   useEffect(() => {
@@ -100,7 +93,6 @@ export default function App() {
     const handleCustomVideosUpdate = () => setCustomVideosState(getCustomVideos());
     const handlePlaylistsUpdate = () => setVideoPlaylistsState(getVideoPlaylists());
     const handleBookmarksUpdate = () => setVideoBookmarksState(getVideoBookmarks());
-    const handleMockResultsUpdate = () => setMockTestResultsState(getMockTestResults());
 
     window.addEventListener('studynest-planned-sessions-updated', handlePlannedSessionsUpdate);
     window.addEventListener('studynest-exams-updated', handleExamsUpdate);
@@ -108,7 +100,6 @@ export default function App() {
     window.addEventListener('studynest-custom-videos-updated', handleCustomVideosUpdate);
     window.addEventListener('studynest-playlists-updated', handlePlaylistsUpdate);
     window.addEventListener('studynest-video-bookmarks-updated', handleBookmarksUpdate);
-    window.addEventListener('studynest-mock-results-updated', handleMockResultsUpdate);
 
     return () => {
       window.removeEventListener('studynest-planned-sessions-updated', handlePlannedSessionsUpdate);
@@ -117,7 +108,6 @@ export default function App() {
       window.removeEventListener('studynest-custom-videos-updated', handleCustomVideosUpdate);
       window.removeEventListener('studynest-playlists-updated', handlePlaylistsUpdate);
       window.removeEventListener('studynest-video-bookmarks-updated', handleBookmarksUpdate);
-      window.removeEventListener('studynest-mock-results-updated', handleMockResultsUpdate);
     };
   }, []);
 
@@ -199,11 +189,7 @@ export default function App() {
     const updated = [note, ...notes];
     setNotesState(updated);
     saveNotes(updated);
-  };
-
-  const handleSaveQuizAttempt = (attempt) => {
-    const updated = saveQuizAttempt(attempt);
-    setQuizHistoryState(updated);
+    showToast('Note added to course notes!');
   };
 
   const handleLogStudySession = (session) => {
@@ -238,21 +224,6 @@ export default function App() {
     showToast(isSaved ? `Removed from Watch Later: ${title}` : `🔖 Added to Watch Later: ${title}`);
   };
 
-  const handleSaveAIConversations = (newConvs) => {
-    setAiConversationsState(newConvs);
-    saveAIConversations(newConvs);
-  };
-
-  const handleSavePlannedSessions = (newSessions) => {
-    setPlannedSessionsState(newSessions);
-    savePlannedSessions(newSessions);
-  };
-
-  const handleSaveUpcomingExams = (newExams) => {
-    setUpcomingExamsState(newExams);
-    saveUpcomingExams(newExams);
-  };
-
   const handleLogRecentlyWatchedVideo = (entry) => {
     const updated = logRecentlyWatchedVideo(entry);
     setRecentlyWatchedVideosState(updated);
@@ -273,34 +244,24 @@ export default function App() {
     saveVideoBookmarks(bookmarks);
   };
 
-  const handleResetAllData = () => {
-    resetAllStudentData();
-    setCompletedTopicsState({});
-    setCompletedModuleIdsState([]);
-    setTasksState([]);
-    setNotesState([]);
-    setQuizHistoryState([]);
-    setStudySessionsState([]);
-    setAssignmentsState([]);
-    setCompletedVideoIdsState([]);
-    setWatchLaterVideoIdsState([]);
-    setAiConversationsState([]);
-    setPlannedSessionsState([]);
-    setUpcomingExamsState([]);
-    setRecentlyWatchedVideosState([]);
-    setCustomVideosState([]);
-    setVideoBookmarksState([]);
-    showToast('All progress, tasks, notes, chats, and video history reset to clean slate.');
+  const handleSaveAIConversations = (newConvs) => {
+    setAiConversationsState(newConvs);
+    saveAIConversations(newConvs);
+  };
+
+  const handleSavePlannedSessions = (newSessions) => {
+    setPlannedSessionsState(newSessions);
+    savePlannedSessions(newSessions);
+  };
+
+  const handleSaveUpcomingExams = (newExams) => {
+    setUpcomingExamsState(newExams);
+    saveUpcomingExams(newExams);
   };
 
   const handleNavigate = (viewId) => {
     setActiveView(viewId);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleOpenSubjectQuiz = (subjectId) => {
-    setQuizInitialSubject(subjectId);
-    handleNavigate('quizzes');
   };
 
   // Global search result navigation handler
@@ -313,24 +274,23 @@ export default function App() {
       handleNavigate('python');
     } else if (target.type === 'video') {
       handleNavigate('videos');
-    } else if (target.type === 'note') {
-      handleNavigate('notes');
-    } else if (target.type === 'assignment') {
+    } else if (target.type === 'exam-prep' || target.type === 'exam') {
+      handleNavigate('exam-prep');
+    } else if (target.type === 'planner' || target.type === 'assignment') {
       handleNavigate('planner');
-    } else if (target.type === 'ai') {
+    } else if (target.type === 'ai' || target.type === 'ai-assistant') {
       handleNavigate('ai-assistant');
     }
   };
 
-  // Study streak calculation: unique dates in the last 7 days with study or tasks
-  const studyDates = new Set(studySessions.map((s) => s.date));
-  const studyStreakDays = studyDates.size;
+  // Ensure currentView is strictly one of the valid active sections
+  const currentView = VALID_VIEWS.includes(activeView) ? activeView : 'dashboard';
 
   return (
     <div className="app-shell">
       {/* 1. Sidebar Navigation */}
       <Sidebar
-        activeView={activeView}
+        activeView={currentView}
         onNavigate={handleNavigate}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -340,23 +300,21 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="main-content-wrap">
-        {/* Top Navigation Header with Search & Profile */}
+        {/* Top Navigation Header with Single Global Search & Profile */}
         <TopNav
           profile={profile}
           onOpenProfile={() => setIsProfileOpen(true)}
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
-          notes={notes}
           assignments={assignments}
           onNavigateToResult={handleNavigateToResult}
-          studyStreakDays={studyStreakDays}
           onShowToast={showToast}
         />
 
         {/* Scrollable Page Container */}
-        <main className={`page-scroll-area ${activeView === 'ai-assistant' ? 'page-scroll-area-ai' : ''}`}>
-          {activeView === 'dashboard' && (
+        <main className={`page-scroll-area ${currentView === 'ai-assistant' ? 'page-scroll-area-ai' : ''}`}>
+          {currentView === 'dashboard' && (
             <DashboardView
               profile={profile}
               completedTopics={completedTopics}
@@ -378,7 +336,7 @@ export default function App() {
             />
           )}
 
-          {activeView === 'ai-assistant' && (
+          {currentView === 'ai-assistant' && (
             <AIAssistantView
               profile={profile}
               conversations={aiConversations}
@@ -392,17 +350,7 @@ export default function App() {
             />
           )}
 
-          {activeView === 'ai-notes' && (
-            <AINotesGeneratorView
-              notes={notes}
-              onSaveNotes={handleSaveNotes}
-              profile={profile}
-              onNavigate={handleNavigate}
-              onShowToast={showToast}
-            />
-          )}
-
-          {activeView === 'subjects' && (
+          {currentView === 'subjects' && (
             <SubjectsView
               onSelectSubject={(sub) => setSelectedSubject(sub)}
               completedTopics={completedTopics}
@@ -411,7 +359,7 @@ export default function App() {
             />
           )}
 
-          {activeView === 'python' && (
+          {currentView === 'python' && (
             <PythonAcademyView
               completedModuleIds={completedModuleIds}
               onToggleModuleCompletion={handleTogglePythonModule}
@@ -419,7 +367,7 @@ export default function App() {
             />
           )}
 
-          {activeView === 'videos' && (
+          {currentView === 'videos' && (
             <VideoLearningView
               completedVideoIds={completedVideoIds}
               onToggleCompleteVideo={handleToggleCompleteVideo}
@@ -439,7 +387,7 @@ export default function App() {
             />
           )}
 
-          {activeView === 'exam-prep' && (
+          {currentView === 'exam-prep' && (
             <ExamPrepView
               profile={profile}
               completedTopics={completedTopics}
@@ -450,7 +398,7 @@ export default function App() {
             />
           )}
 
-          {activeView === 'planner' && (
+          {currentView === 'planner' && (
             <StudyPlannerView
               tasks={tasks}
               onSaveTasks={handleSaveTasks}
@@ -468,57 +416,17 @@ export default function App() {
               onShowToast={showToast}
             />
           )}
-
-          {activeView === 'notes' && (
-            <NotesView
-              notes={notes}
-              onSaveNotes={handleSaveNotes}
-              onShowToast={showToast}
-              onNavigateToPython={() => handleNavigate('python')}
-              onNavigateToAINotes={() => handleNavigate('ai-notes')}
-            />
-          )}
-
-          {activeView === 'quizzes' && (
-            <QuizzesView
-              quizHistory={quizHistory}
-              onSaveQuizAttempt={handleSaveQuizAttempt}
-              initialSubjectId={quizInitialSubject}
-              onShowToast={showToast}
-            />
-          )}
-
-          {activeView === 'progress' && (
-            <ProgressView
-              profile={profile}
-              completedTopics={completedTopics}
-              completedModuleIds={completedModuleIds}
-              quizHistory={quizHistory}
-              mockTestResults={mockTestResults}
-              assignments={assignments}
-              tasks={tasks}
-              notes={notes}
-              studySessions={studySessions}
-              completedVideoIds={completedVideoIds}
-              upcomingExams={upcomingExams}
-              studyStreakDays={studyStreakDays}
-              onNavigate={handleNavigate}
-              onSelectSubject={(sub) => setSelectedSubject(sub)}
-              onResetAllData={handleResetAllData}
-              onShowToast={showToast}
-            />
-          )}
         </main>
 
         {/* Mobile Bottom Navigation Bar */}
         <BottomNav
-          activeView={activeView}
+          activeView={currentView}
           onNavigate={handleNavigate}
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
         />
       </div>
 
-      {/* Clickable Subject Detail Modal with Checkboxes, Assignments, Questions & Notes */}
+      {/* Clickable Subject Detail Modal with Checkboxes, Assignments, Questions & Video Lectures */}
       {selectedSubject && (
         <SubjectModal
           subject={selectedSubject}
@@ -531,9 +439,9 @@ export default function App() {
           }}
           subjectNotes={notes.filter((n) => n.subjectCode === selectedSubject.code)}
           onAddNote={handleAddNoteFromSubject}
-          onOpenQuiz={handleOpenSubjectQuiz}
-          onOpenPythonAcademy={() => handleNavigate('python')}
+          onOpenExam={() => handleNavigate('exam-prep')}
           onOpenVideos={() => handleNavigate('videos')}
+          onOpenPythonAcademy={() => handleNavigate('python')}
           onOpenAIAssistant={() => handleNavigate('ai-assistant')}
           onClose={() => setSelectedSubject(null)}
           onShowToast={showToast}
@@ -550,11 +458,8 @@ export default function App() {
         />
       )}
 
-      {/* Feedback Toast Notification */}
-      <Toast
-        message={toastMessage}
-        onDismiss={() => setToastMessage(null)}
-      />
+      {/* Toast Notification */}
+      {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
     </div>
   );
 }

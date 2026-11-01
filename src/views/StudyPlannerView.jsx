@@ -1544,7 +1544,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
               <IconSearch size={14} style={{ color: 'var(--text-muted)' }} />
               <input
                 type="text"
-                placeholder="Search tasks, assignments, projects..."
+                placeholder="Filter tasks by title or tag..."
                 value={taskSearch}
                 onChange={(e) => setTaskSearch(e.target.value)}
                 style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '13px' }}

@@ -6,11 +6,11 @@ import {
   IconClock,
   IconNotes,
   IconPython,
-  IconQuiz,
+  IconAward,
+  IconVideo,
   IconPlus,
   IconSparkles,
-  IconTrash,
-  IconVideo
+  IconTrash
 } from './Icons';
 import { getAllSubjectTopics, SAMPLE_SYLLABUS_DISCLAIMER } from '../data/subjectsData';
 
@@ -22,9 +22,9 @@ export default function SubjectModal({
   onSaveAssignments,
   subjectNotes = [],
   onAddNote,
-  onOpenQuiz,
-  onOpenPythonAcademy,
+  onOpenExam,
   onOpenVideos,
+  onOpenPythonAcademy,
   onOpenAIAssistant,
   onClose,
   onShowToast
@@ -652,18 +652,6 @@ export default function SubjectModal({
           </div>
 
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              type="button"
-              className="sem2-action-btn"
-              onClick={() => {
-                onClose();
-                onOpenQuiz(subject.id);
-              }}
-            >
-              <IconQuiz size={16} />
-              <span>Practice Quiz</span>
-            </button>
-
             {onOpenVideos && (
               <button
                 type="button"
@@ -675,6 +663,20 @@ export default function SubjectModal({
               >
                 <IconVideo size={16} />
                 <span>Video Lectures</span>
+              </button>
+            )}
+
+            {onOpenExam && (
+              <button
+                type="button"
+                className="sem2-action-btn"
+                onClick={() => {
+                  onClose();
+                  onOpenExam(subject.id);
+                }}
+              >
+                <IconAward size={16} />
+                <span>Exam Prep</span>
               </button>
             )}
 

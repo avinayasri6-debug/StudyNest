@@ -1,11 +1,14 @@
 // Central LocalStorage Management for StudyNest
 import { INITIAL_TASKS } from '../data/tasksData';
 import { DEFAULT_VIDEO_PLAYLISTS } from '../data/videosData';
+import { getBranchByName } from '../data/branchesData';
 
 const STORAGE_KEYS = {
   PROFILE: 'studynest_profile_v2',
   SUBJECT_PROGRESS: 'studynest_subject_progress_v2',
   CUSTOM_TOPICS: 'studynest_custom_topics_v2',
+  CUSTOM_SUBJECTS: 'studynest_custom_subjects_v2',
+  SUBJECT_OVERRIDES: 'studynest_subject_overrides_v2',
   ASSIGNMENTS: 'studynest_assignments_v2',
   PYTHON_COMPLETED: 'studynest_python_completed_v2',
   TASKS: 'studynest_tasks_v2',
@@ -32,15 +35,19 @@ const STORAGE_KEYS = {
   EXAM_REVISION_CHECKLIST: 'studynest_exam_checklist_v2',
   AI_CONVERSATIONS: 'studynest_ai_conversations_v1',
   AI_ACTIVE_CHAT_ID: 'studynest_ai_active_chat_id_v1',
-  AI_SETTINGS: 'studynest_ai_settings_v1'
+  AI_SETTINGS: 'studynest_ai_settings_v1',
+  DAILY_CHALLENGES: 'studynest_daily_challenges_v1'
 };
 
 export const DEFAULT_PROFILE = {
   name: 'Engineering Student',
-  college: '',
-  branch: 'CSE – Artificial Intelligence and Machine Learning',
+  college: 'Engineering Institute of Technology',
+  degree: 'B.Tech',
+  branch: 'Computer Science and Engineering',
+  branchId: 'cse',
   year: 'First Year',
   semester: 'Semester 1',
+  curriculum: 'AICTE 2024 Model Curriculum',
   profilePic: null,
   studyGoals: {
     weeklyHoursTarget: 20,
@@ -55,7 +62,15 @@ export function getProfile() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.PROFILE);
     if (!raw) return DEFAULT_PROFILE;
-    return { ...DEFAULT_PROFILE, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    const branchInfo = getBranchByName(parsed.branch);
+    return {
+      ...DEFAULT_PROFILE,
+      ...parsed,
+      branchId: parsed.branchId || branchInfo?.id || 'cse',
+      degree: parsed.degree || DEFAULT_PROFILE.degree,
+      curriculum: parsed.curriculum || DEFAULT_PROFILE.curriculum
+    };
   } catch (e) {
     console.error('Error reading profile from localStorage:', e);
     return DEFAULT_PROFILE;
@@ -367,7 +382,11 @@ export function getVideoPlaylists() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.VIDEO_PLAYLISTS);
     if (!raw) return DEFAULT_VIDEO_PLAYLISTS;
-    return JSON.parse(raw);
+    const stored = JSON.parse(raw);
+    if (!Array.isArray(stored)) return DEFAULT_VIDEO_PLAYLISTS;
+    const storedIds = new Set(stored.map((p) => p.id));
+    const missingDefaults = DEFAULT_VIDEO_PLAYLISTS.filter((p) => !storedIds.has(p.id));
+    return [...stored, ...missingDefaults];
   } catch {
     return DEFAULT_VIDEO_PLAYLISTS;
   }
@@ -876,6 +895,112 @@ export function saveAISettings(settings) {
     localStorage.setItem(STORAGE_KEYS.AI_SETTINGS, JSON.stringify(settings));
   } catch (e) {
     console.error('Error saving AI settings:', e);
+  }
+}
+
+// ==========================================
+// DYNAMIC CURRICULUM & CUSTOM SUBJECTS
+// ==========================================
+export function getCustomSubjects() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.CUSTOM_SUBJECTS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomSubjects(subjects) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.CUSTOM_SUBJECTS, JSON.stringify(subjects));
+    window.dispatchEvent(new Event('studynest-custom-subjects-updated'));
+  } catch (e) {
+    console.error('Error saving custom subjects to localStorage:', e);
+  }
+}
+
+export function addCustomSubject(newSubject) {
+  const current = getCustomSubjects();
+  const updated = [newSubject, ...current];
+  saveCustomSubjects(updated);
+  return updated;
+}
+
+export function deleteCustomSubject(subjectId) {
+  const current = getCustomSubjects();
+  const updated = current.filter((s) => s.id !== subjectId);
+  saveCustomSubjects(updated);
+  return updated;
+}
+
+export function getSubjectOverrides() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SUBJECT_OVERRIDES);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveSubjectOverrides(overrides) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.SUBJECT_OVERRIDES, JSON.stringify(overrides));
+    window.dispatchEvent(new Event('studynest-subject-overrides-updated'));
+  } catch (e) {
+    console.error('Error saving subject overrides to localStorage:', e);
+  }
+}
+
+export function updateSubjectOverride(subjectId, updates) {
+  const current = getSubjectOverrides();
+  const existing = current[subjectId] || {};
+  const updated = {
+    ...current,
+    [subjectId]: {
+      ...existing,
+      ...updates
+    }
+  };
+  saveSubjectOverrides(updated);
+  return updated;
+}
+
+export function resetSubjectOverride(subjectId) {
+  const current = getSubjectOverrides();
+  const { [subjectId]: _removed, ...rest } = current;
+  saveSubjectOverrides(rest);
+  return rest;
+}
+
+// ==========================================
+// DAILY ENGINEERING CHALLENGE TRACKING
+// ==========================================
+export function getDailyChallengeCompletions() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DAILY_CHALLENGES);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveDailyChallengeCompletion(challengeId, optionChosen, isCorrect) {
+  try {
+    const current = getDailyChallengeCompletions();
+    const updated = {
+      ...current,
+      [challengeId]: {
+        completedAt: new Date().toISOString(),
+        optionChosen,
+        isCorrect
+      }
+    };
+    localStorage.setItem(STORAGE_KEYS.DAILY_CHALLENGES, JSON.stringify(updated));
+    window.dispatchEvent(new Event('studynest-daily-challenges-updated'));
+    return updated;
+  } catch (e) {
+    console.error('Error saving daily challenge completion:', e);
+    return {};
   }
 }
 

@@ -7,6 +7,7 @@ import {
   IconChevronRight,
   IconCheckCircle
 } from '../components/Icons';
+import DailyChallengeCard from '../components/DailyChallengeCard';
 import { SEMESTER_1_SUBJECTS, getAllSubjectTopics } from '../data/subjectsData';
 import { PYTHON_MODULES } from '../data/pythonCurriculum';
 import { VIDEO_LESSONS } from '../data/videosData';
@@ -121,9 +122,13 @@ export default function DashboardView({
   onSelectSubject,
   onNavigate,
   _searchTerm = '',
-  onShowToast
+  onShowToast,
+  onOpenPlayground
 }) {
   const studentFirstName = profile?.name ? profile.name.trim().split(' ')[0] : 'Student';
+  const branchSubtitle = profile?.branch
+    ? `${profile.branch} · ${profile.semester || 'Semester 1'}`
+    : 'Semester 1 Engineering';
 
   // 1. Derive the single most useful Continue Learning item from real activity
   const continueItem = resolveContinueItem({
@@ -184,9 +189,30 @@ export default function DashboardView({
   return (
     <div className="dashboard-container">
       {/* 1. Simple Welcome Heading & Short Subtitle */}
-      <header className="dashboard-header">
-        <h1 className="dashboard-greeting">Good day, {studentFirstName}.</h1>
-        <p className="dashboard-subtitle">Here is your academic workspace for Semester 1.</p>
+      <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h1 className="dashboard-greeting">Good day, {studentFirstName}.</h1>
+          <p className="dashboard-subtitle">Here is your academic workspace for {branchSubtitle}.</p>
+        </div>
+
+        {onOpenPlayground && (
+          <button
+            type="button"
+            className="sem2-action-btn"
+            onClick={onOpenPlayground}
+            style={{
+              backgroundColor: 'rgba(104, 143, 120, 0.15)',
+              color: 'var(--forest-900)',
+              borderColor: 'var(--border-sage)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <IconSparkles size={15} />
+            <span>Interactive Engineering Lab</span>
+          </button>
+        )}
       </header>
 
       {/* 2. One Useful Continue Learning Section */}
@@ -212,6 +238,9 @@ export default function DashboardView({
           </button>
         </div>
       </section>
+
+      {/* 3. Optional Daily Engineering Micro-Challenge */}
+      <DailyChallengeCard onShowToast={onShowToast} />
 
       {/* 3. Four Primary Feature Cards */}
       <section className="dashboard-features-section" aria-label="Core Academic Features">

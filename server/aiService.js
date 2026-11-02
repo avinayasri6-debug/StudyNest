@@ -85,9 +85,48 @@ export function getPublicAiStatus() {
 /**
  * Builds a comprehensive engineering pedagogical system prompt.
  */
-export function buildSystemPrompt({ subject, mode = 'intermediate', quickAction = null }) {
-  const subjectName = subject?.title || 'First Year Engineering';
+export function buildSystemPrompt({ subject, mode = 'intermediate', quickAction = null, studentProfile = null }) {
+  const subjectName = subject?.title || 'Engineering Course';
   const subjectCode = subject?.code || 'ENG';
+  const branchName = studentProfile?.branch || 'Engineering';
+  const degreeName = studentProfile?.degree || 'B.Tech / B.E.';
+  const collegeName = studentProfile?.college ? `at ${studentProfile.college}` : '';
+  const semesterName = studentProfile?.semester || 'Semester 1';
+  const yearName = studentProfile?.year || 'First Year';
+  const curriculumScheme = studentProfile?.curriculum || 'Standard Engineering Regulations';
+
+  // Branch-specific pedagogical calibration
+  let branchCalibration = '';
+  const bLower = branchName.toLowerCase();
+  if (bLower.includes('mechanical')) {
+    branchCalibration = `
+BRANCH FOCUS: MECHANICAL ENGINEERING
+- Connect physical principles to mechanics of solids, stress/strain tensors, thermodynamics cycles, fluid dynamics, heat transfer, and CAD/CAM manufacturing.
+- Use mechanical and thermo-fluid engineering examples wherever applicable.`;
+  } else if (bLower.includes('civil')) {
+    branchCalibration = `
+BRANCH FOCUS: CIVIL ENGINEERING
+- Connect principles to structural mechanics, geotechnical soil behavior, fluid hydraulics, material mechanics (concrete/steel), surveying, and infrastructure design.
+- Use structural and environmental civil engineering examples wherever applicable.`;
+  } else if (bLower.includes('electronic') || bLower.includes('ece') || bLower.includes('electrical') || bLower.includes('eee')) {
+    branchCalibration = `
+BRANCH FOCUS: ELECTRONICS & ELECTRICAL ENGINEERING
+- Connect principles to circuit theory (KVL/KCL), signals & systems, semiconductor physics, transient response, electromagnetic fields, logic gates, and power systems.
+- Emphasize hardware, silicon devices, signal integrity, and digital control concepts.`;
+  } else if (bLower.includes('chemical')) {
+    branchCalibration = `
+BRANCH FOCUS: CHEMICAL ENGINEERING
+- Connect concepts to material & energy balances, thermodynamics, reaction kinetics, transport phenomena, mass transfer, and process control.
+- Use continuous flow, reactor, and distillation/separation examples wherever applicable.`;
+  } else if (bLower.includes('bio') || bLower.includes('biotech')) {
+    branchCalibration = `
+BRANCH FOCUS: BIOTECHNOLOGY & BIOENGINEERING
+- Connect concepts to molecular genetics, cellular pathways, bioprocess kinetics, downstream processing, enzyme catalysis, and bioinformatics.`;
+  } else {
+    branchCalibration = `
+BRANCH FOCUS: COMPUTING, SOFTWARE & AI (${branchName})
+- Connect concepts to computational complexity (Big-O), memory layout, discrete algorithms, data structures, neural architectures, and robust software patterns.`;
+  }
 
   let modeInstruction = '';
   if (mode === 'beginner') {
@@ -170,10 +209,15 @@ QUICK ACTION FOCUS: PYTHON CODE BREAKDOWN & LAB HELP
   }
 
   return `
-You are the StudyNest AI Engineering Study Assistant — an intelligent, patient, and pedagogically sound academic tutor designed specifically for first-year engineering students in Computer Science, AI & Machine Learning.
+You are the StudyNest AI Engineering Study Assistant — an intelligent, patient, and pedagogically sound academic tutor for undergraduate engineering students.
 
-CURRENT ACADEMIC CONTEXT:
-- Subject: ${subjectName} (${subjectCode})
+STUDENT ACADEMIC CONTEXT:
+- Student Degree & Branch: ${degreeName} in ${branchName}
+- Institution: ${collegeName || 'Engineering University'}
+- Academic Stage: ${yearName} (${semesterName})
+- Regulation Framework: ${curriculumScheme}
+- Current Subject: ${subjectName} (${subjectCode})
+${branchCalibration}
 ${modeInstruction}
 ${quickActionInstruction}
 
@@ -1371,7 +1415,7 @@ To master this topic in **${subTitle}**, break the problem down into its fundame
 /**
  * Main chat dispatcher called from API endpoint
  */
-export async function processChatRequest({ messages, subject, mode = 'intermediate', quickAction = null }) {
+export async function processChatRequest({ messages, subject, mode = 'intermediate', quickAction = null, studentProfile = null }) {
   const config = getAiConfig();
 
   const latestUserMessage = messages?.slice().reverse().find((m) => m.role === 'user')?.content || '';
@@ -1382,7 +1426,8 @@ export async function processChatRequest({ messages, subject, mode = 'intermedia
       message: latestUserMessage,
       subject,
       mode,
-      quickAction
+      quickAction,
+      studentProfile
     });
 
     return {
@@ -1396,7 +1441,7 @@ export async function processChatRequest({ messages, subject, mode = 'intermedia
   }
 
   // API Key is configured -> generate system prompt and call real LLM
-  const systemInstruction = buildSystemPrompt({ subject, mode, quickAction });
+  const systemInstruction = buildSystemPrompt({ subject, mode, quickAction, studentProfile });
   const overallDeadline = Date.now() + OVERALL_REQUEST_DEADLINE_MS;
 
   try {

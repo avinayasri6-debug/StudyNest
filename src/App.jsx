@@ -4,6 +4,7 @@ import TopNav from './components/TopNav';
 import BottomNav from './components/BottomNav';
 import SubjectModal from './components/SubjectModal';
 import StudentProfileModal from './components/StudentProfileModal';
+import EngineeringPlayground from './components/EngineeringPlayground';
 import Toast from './components/Toast';
 
 // Primary Section Views
@@ -49,7 +50,11 @@ import {
   getVideoPlaylists,
   saveVideoPlaylists,
   getVideoBookmarks,
-  saveVideoBookmarks
+  saveVideoBookmarks,
+  getCustomSubjects,
+  saveCustomSubjects,
+  getSubjectOverrides,
+  updateSubjectOverride
 } from './services/storage';
 
 import { SEMESTER_1_SUBJECTS } from './data/subjectsData';
@@ -63,6 +68,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isPlaygroundOpen, setIsPlaygroundOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
   // ==========================================
@@ -84,6 +90,8 @@ export default function App() {
   const [customVideos, setCustomVideosState] = useState(() => getCustomVideos());
   const [videoPlaylists, setVideoPlaylistsState] = useState(() => getVideoPlaylists());
   const [videoBookmarks, setVideoBookmarksState] = useState(() => getVideoBookmarks());
+  const [customSubjects, setCustomSubjectsState] = useState(() => getCustomSubjects());
+  const [subjectOverrides, setSubjectOverridesState] = useState(() => getSubjectOverrides());
 
   // Keep storage states in sync with external events
   useEffect(() => {
@@ -93,6 +101,8 @@ export default function App() {
     const handleCustomVideosUpdate = () => setCustomVideosState(getCustomVideos());
     const handlePlaylistsUpdate = () => setVideoPlaylistsState(getVideoPlaylists());
     const handleBookmarksUpdate = () => setVideoBookmarksState(getVideoBookmarks());
+    const handleCustomSubjectsUpdate = () => setCustomSubjectsState(getCustomSubjects());
+    const handleSubjectOverridesUpdate = () => setSubjectOverridesState(getSubjectOverrides());
 
     window.addEventListener('studynest-planned-sessions-updated', handlePlannedSessionsUpdate);
     window.addEventListener('studynest-exams-updated', handleExamsUpdate);
@@ -100,6 +110,8 @@ export default function App() {
     window.addEventListener('studynest-custom-videos-updated', handleCustomVideosUpdate);
     window.addEventListener('studynest-playlists-updated', handlePlaylistsUpdate);
     window.addEventListener('studynest-video-bookmarks-updated', handleBookmarksUpdate);
+    window.addEventListener('studynest-custom-subjects-updated', handleCustomSubjectsUpdate);
+    window.addEventListener('studynest-subject-overrides-updated', handleSubjectOverridesUpdate);
 
     return () => {
       window.removeEventListener('studynest-planned-sessions-updated', handlePlannedSessionsUpdate);
@@ -108,6 +120,8 @@ export default function App() {
       window.removeEventListener('studynest-custom-videos-updated', handleCustomVideosUpdate);
       window.removeEventListener('studynest-playlists-updated', handlePlaylistsUpdate);
       window.removeEventListener('studynest-video-bookmarks-updated', handleBookmarksUpdate);
+      window.removeEventListener('studynest-custom-subjects-updated', handleCustomSubjectsUpdate);
+      window.removeEventListener('studynest-subject-overrides-updated', handleSubjectOverridesUpdate);
     };
   }, []);
 
@@ -259,6 +273,25 @@ export default function App() {
     saveUpcomingExams(newExams);
   };
 
+  const handleAddCustomSubject = (newSub) => {
+    const updated = [newSub, ...customSubjects];
+    setCustomSubjectsState(updated);
+    saveCustomSubjects(updated);
+  };
+
+  const handleUpdateSubject = (subjectId, updates) => {
+    const isCustom = customSubjects.some((cs) => cs.id === subjectId);
+    if (isCustom) {
+      const updated = customSubjects.map((cs) => (cs.id === subjectId ? { ...cs, ...updates } : cs));
+      setCustomSubjectsState(updated);
+      saveCustomSubjects(updated);
+    } else {
+      const updatedOverrides = updateSubjectOverride(subjectId, updates);
+      setSubjectOverridesState(updatedOverrides);
+    }
+    setSelectedSubject((prev) => (prev && prev.id === subjectId ? { ...prev, ...updates } : prev));
+  };
+
   const handleNavigate = (viewId) => {
     setActiveView(viewId);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -333,6 +366,7 @@ export default function App() {
               onNavigate={handleNavigate}
               searchTerm={searchTerm}
               onShowToast={showToast}
+              onOpenPlayground={() => setIsPlaygroundOpen(true)}
             />
           )}
 
@@ -352,10 +386,15 @@ export default function App() {
 
           {currentView === 'subjects' && (
             <SubjectsView
+              profile={profile}
               onSelectSubject={(sub) => setSelectedSubject(sub)}
               completedTopics={completedTopics}
               searchTerm={searchTerm}
               onShowToast={showToast}
+              customSubjects={customSubjects}
+              onAddCustomSubject={handleAddCustomSubject}
+              subjectOverrides={subjectOverrides}
+              onOpenPlayground={() => setIsPlaygroundOpen(true)}
             />
           )}
 
@@ -445,6 +484,7 @@ export default function App() {
           onOpenAIAssistant={() => handleNavigate('ai-assistant')}
           onClose={() => setSelectedSubject(null)}
           onShowToast={showToast}
+          onUpdateSubject={handleUpdateSubject}
         />
       )}
 
@@ -457,6 +497,12 @@ export default function App() {
           onShowToast={showToast}
         />
       )}
+
+      {/* Interactive Engineering Playground Modal */}
+      <EngineeringPlayground
+        isOpen={isPlaygroundOpen}
+        onClose={() => setIsPlaygroundOpen(false)}
+      />
 
       {/* Toast Notification */}
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}

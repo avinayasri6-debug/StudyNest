@@ -117,6 +117,15 @@ export default function VideoLearningView({
     return [...VIDEO_LESSONS, ...customVideos];
   }, [customVideos]);
 
+  // Dynamic category counts
+  const categoryCounts = useMemo(() => {
+    const counts = { all: allVideos.length };
+    allVideos.forEach((v) => {
+      counts[v.subjectId] = (counts[v.subjectId] || 0) + 1;
+    });
+    return counts;
+  }, [allVideos]);
+
   // Total Progress Metrics
   const totalVideos = allVideos.length;
   const completedCount = completedVideoIds.length;
@@ -666,6 +675,29 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
                     <span>Bookmark Timestamp</span>
                   </button>
 
+                  {/* Official NPTEL Course Link (if available) */}
+                  {activeVideo.nptelUrl && (
+                    <a
+                      href={activeVideo.nptelUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="editor-btn-secondary"
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '12.5px',
+                        textDecoration: 'none',
+                        backgroundColor: 'rgba(104, 143, 120, 0.15)',
+                        borderColor: 'var(--border-sage)',
+                        color: 'var(--forest-900)',
+                        fontWeight: 600
+                      }}
+                      title="View official NPTEL Course 122107035 portal"
+                    >
+                      <IconExternalLink size={14} />
+                      <span>NPTEL 122107035</span>
+                    </a>
+                  )}
+
                   {/* External YouTube fallback link */}
                   <a
                     href={`https://www.youtube.com/watch?v=${activeVideo.youtubeId}`}
@@ -930,6 +962,7 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
               </span>
               {VIDEO_SUBJECT_CATEGORIES.map((cat) => {
                 const isSelected = selectedSubjectFilter === cat.id;
+                const count = categoryCounts[cat.id] || 0;
                 return (
                   <button
                     key={cat.id}
@@ -940,10 +973,25 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
                       backgroundColor: isSelected ? 'var(--forest-850)' : 'var(--bg-card-warm)',
                       borderColor: isSelected ? 'var(--forest-850)' : 'var(--border-subtle)',
                       color: isSelected ? '#FFFFFF' : 'var(--text-main)',
-                      fontWeight: isSelected ? 700 : 500
+                      fontWeight: isSelected ? 700 : 500,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
                     }}
                   >
                     <span>{cat.label}</span>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        padding: '1px 6px',
+                        borderRadius: '10px',
+                        backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.25)' : 'var(--border-subtle)',
+                        color: isSelected ? '#FFFFFF' : 'var(--forest-850)',
+                        fontWeight: 700
+                      }}
+                    >
+                      {count}
+                    </span>
                   </button>
                 );
               })}
@@ -1091,6 +1139,158 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
                 </button>
               </div>
             </form>
+          )}
+
+          {/* Engineering Physics NPTEL 122107035 Curriculum Banner */}
+          {selectedSubjectFilter === 'phy101' && (
+            <div
+              style={{
+                marginBottom: '16px',
+                padding: '16px 20px',
+                backgroundColor: 'rgba(104, 143, 120, 0.08)',
+                border: '1px solid var(--border-sage)',
+                borderRadius: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      backgroundColor: 'var(--forest-850)',
+                      color: '#FFFFFF',
+                      padding: '2px 8px',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    NPTEL 122107035
+                  </span>
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--forest-950)' }}>
+                    Official National Engineering Curriculum: Engineering Physics (IIT Roorkee)
+                  </span>
+                </div>
+                <a
+                  href="https://nptel.ac.in/courses/122107035"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="editor-btn-secondary"
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    textDecoration: 'none',
+                    fontWeight: 600,
+                    backgroundColor: 'var(--forest-850)',
+                    color: '#FFFFFF',
+                    borderColor: 'var(--forest-850)'
+                  }}
+                >
+                  <IconExternalLink size={13} />
+                  <span>Open Official NPTEL Portal</span>
+                </a>
+              </div>
+              <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Structured syllabus directly aligned with NPTEL Course 122107035 covering oscillations, wave optics, thin film interference, Newton's rings experiment ($D_n^2 = 4n\lambda R$), Fraunhofer diffraction, 1D Schrödinger quantum box, stimulated laser emission, semiconductor carrier statistics, and Maxwell's electromagnetic equations.
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {[
+                  'Oscillations and Waves',
+                  'Wave Optics',
+                  'Interference',
+                  "Newton's Rings",
+                  'Diffraction',
+                  'Quantum Mechanics',
+                  'Lasers',
+                  'Semiconductors',
+                  'Electromagnetic Theory'
+                ].map((tag) => (
+                  <span
+                    key={tag}
+                    style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      backgroundColor: 'rgba(104, 143, 120, 0.14)',
+                      color: 'var(--forest-900)',
+                      fontWeight: 600
+                    }}
+                  >
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Engineering Mathematics Curriculum Banner */}
+          {selectedSubjectFilter === 'math101' && (
+            <div
+              style={{
+                marginBottom: '16px',
+                padding: '16px 20px',
+                backgroundColor: 'rgba(104, 143, 120, 0.08)',
+                border: '1px solid var(--border-sage)',
+                borderRadius: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      backgroundColor: 'var(--forest-850)',
+                      color: '#FFFFFF',
+                      padding: '2px 8px',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    MATH 101
+                  </span>
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--forest-950)' }}>
+                    Engineering Mathematics: Core Foundation Track
+                  </span>
+                </div>
+              </div>
+              <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Comprehensive curriculum covering vector spaces, matrix determinants and eigenvalues, differential theorems, Beta & Gamma integrals, partial differentiation with Lagrange multipliers, double/triple integration, and first & second order differential equations.
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {[
+                  'Linear Algebra',
+                  'Matrices and Determinants',
+                  'Differential Calculus',
+                  'Integral Calculus',
+                  'Partial Differentiation',
+                  'Multiple Integrals',
+                  'Differential Equations'
+                ].map((tag) => (
+                  <span
+                    key={tag}
+                    style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      backgroundColor: 'rgba(104, 143, 120, 0.14)',
+                      color: 'var(--forest-900)',
+                      fontWeight: 600
+                    }}
+                  >
+                    ✓ {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Unit-Wise Hierarchical Grouping */}

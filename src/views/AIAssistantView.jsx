@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SEMESTER_1_SUBJECTS } from '../data/subjectsData';
+import { getActiveCurriculumSubjects } from '../data/curriculumData';
 import { SUBJECT_STARTER_PROMPTS, QUICK_ACTIONS, EXPLANATION_MODES } from '../data/aiPromptsData';
 import {
   IconSparkles,
@@ -134,8 +135,14 @@ export default function AIAssistantView({
     saveAISettings({ defaultSubjectId: activeSubjectId, defaultMode: activeMode });
   }, [activeSubjectId, activeMode]);
 
-  // Active Subject Object
-  const currentSubject = SEMESTER_1_SUBJECTS.find((s) => s.id === activeSubjectId) || SEMESTER_1_SUBJECTS[0];
+  // Active Subject List based on student's branch & semester
+  const semNum = Number.parseInt((profile?.semester || 'Semester 1').replace(/\D/g, ''), 10) || 1;
+  const availableSubjects = getActiveCurriculumSubjects({
+    branchId: profile?.branchId || 'cse',
+    semester: semNum
+  });
+  const subjectList = availableSubjects.length > 0 ? availableSubjects : SEMESTER_1_SUBJECTS;
+  const currentSubject = subjectList.find((s) => s.id === activeSubjectId) || subjectList[0];
 
   // Current Active Conversation
   let activeChat = conversations.find((c) => c.id === activeChatId);
@@ -291,6 +298,15 @@ export default function AIAssistantView({
             title: currentSubject.title,
             code: currentSubject.code,
             shortName: currentSubject.shortName
+          },
+          studentProfile: {
+            branch: profile?.branch,
+            branchId: profile?.branchId,
+            college: profile?.college,
+            degree: profile?.degree,
+            year: profile?.year,
+            semester: profile?.semester,
+            curriculum: profile?.curriculum
           },
           mode: activeMode,
           quickAction: quickActionType
@@ -600,7 +616,7 @@ export default function AIAssistantView({
               value={activeSubjectId}
               onChange={(e) => setActiveSubjectId(e.target.value)}
             >
-              {SEMESTER_1_SUBJECTS.map((sub) => (
+              {subjectList.map((sub) => (
                 <option key={sub.id} value={sub.id}>
                   {sub.code} — {sub.title}
                 </option>

@@ -12,7 +12,7 @@ import {
   IconSparkles,
   IconTrash
 } from './Icons';
-import { getAllSubjectTopics, SAMPLE_SYLLABUS_DISCLAIMER } from '../data/subjectsData';
+import { getAllSubjectTopics, SAMPLE_SYLLABUS_DISCLAIMER } from '../data/curriculumData';
 
 export default function SubjectModal({
   subject,
@@ -27,13 +27,23 @@ export default function SubjectModal({
   onOpenPythonAcademy,
   onOpenAIAssistant,
   onClose,
-  onShowToast
+  onShowToast,
+  onUpdateSubject
 }) {
   const [activeTab, setActiveTab] = useState('topics'); // 'topics' | 'assignments' | 'questions' | 'notes' | 'overview'
   const [revealedQuestions, setRevealedQuestions] = useState({});
   const [newTopicName, setNewTopicName] = useState('');
-  const [customTopics, setCustomTopics] = useState([]);
-  
+  const [selectedUnitNum, setSelectedUnitNum] = useState(1);
+  const [newUnitTitle, setNewUnitTitle] = useState('');
+  const [showAddUnitForm, setShowAddUnitForm] = useState(false);
+
+  // Edit Course Info state
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
+  const [editTitle, setEditTitle] = useState(subject?.title || '');
+  const [editCode, setEditCode] = useState(subject?.code || '');
+  const [editCredits, setEditCredits] = useState(subject?.credits || 4);
+  const [editCategory, setEditCategory] = useState(subject?.category || 'Core Engineering');
+
   // New assignment form state
   const [newAsgTitle, setNewAsgTitle] = useState('');
   const [newAsgDate, setNewAsgDate] = useState('');
@@ -44,15 +54,14 @@ export default function SubjectModal({
 
   if (!subject) return null;
 
-  const baseTopics = getAllSubjectTopics(subject);
-  const allTopics = [...baseTopics, ...customTopics];
+  const allTopics = getAllSubjectTopics(subject);
   const totalTopics = allTopics.length;
   const completedCount = allTopics.filter((t) => completedTopicIds.includes(t.id)).length;
   const progressPercent = totalTopics > 0 ? Math.round((completedCount / totalTopics) * 100) : 0;
-
   const isPython = subject.id === 'cse101';
+  const isVerified = subject.verified !== false && subject.source !== 'custom';
 
-  // Important questions reveal toggle
+  // Toggle question answers
   const toggleQuestionReveal = (qId) => {
     setRevealedQuestions((prev) => ({
       ...prev,
@@ -60,19 +69,88 @@ export default function SubjectModal({
     }));
   };
 
-  // Add custom topic
+  // Add custom topic into chosen unit
   const handleAddTopic = (e) => {
     e.preventDefault();
     if (!newTopicName.trim()) return;
+
+    const unitNum = Number.parseInt(selectedUnitNum, 10) || 1;
+    const currentUnits = [...(subject.units || [])];
+    const targetUnitIndex = currentUnits.findIndex((u) => u.unitNumber === unitNum);
+
     const newTopic = {
-      id: `custom-topic-${Date.now()}`,
+      id: `topic-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: newTopicName.trim(),
-      unitNumber: (subject.units?.length || 1),
-      unitTitle: 'Custom Student Topics'
+      isCustom: true
     };
-    setCustomTopics((prev) => [...prev, newTopic]);
+
+    if (targetUnitIndex >= 0) {
+      currentUnits[targetUnitIndex] = {
+        ...currentUnits[targetUnitIndex],
+        topics: [...(currentUnits[targetUnitIndex].topics || []), newTopic]
+      };
+    } else {
+      currentUnits.push({
+        unitNumber: unitNum,
+        unitTitle: `Unit ${unitNum}: Custom Syllabus Topics`,
+        topics: [newTopic]
+      });
+    }
+
+    onUpdateSubject?.(subject.id, { units: currentUnits });
     setNewTopicName('');
-    onShowToast?.(`Added topic: "${newTopic.name}"`);
+    onShowToast?.(`Added "${newTopic.name}" to Unit ${unitNum}`);
+  };
+
+  // Delete a topic
+  const handleDeleteTopic = (e, topicId) => {
+    e.stopPropagation();
+    const currentUnits = (subject.units || []).map((u) => ({
+      ...u,
+      topics: u.topics.filter((t) => t.id !== topicId)
+    }));
+    onUpdateSubject?.(subject.id, { units: currentUnits });
+    onShowToast?.('Topic removed from course curriculum');
+  };
+
+  // Add a new unit to the course
+  const handleAddNewUnit = (e) => {
+    e.preventDefault();
+    if (!newUnitTitle.trim()) return;
+
+    const currentUnits = [...(subject.units || [])];
+    const nextNum = currentUnits.length > 0 ? Math.max(...currentUnits.map((u) => u.unitNumber)) + 1 : 1;
+
+    const newUnit = {
+      unitNumber: nextNum,
+      unitTitle: newUnitTitle.trim(),
+      topics: [
+        {
+          id: `topic-${Date.now()}-init`,
+          name: `${newUnitTitle.trim()} Overview & Core Axioms`,
+          isCustom: true
+        }
+      ]
+    };
+
+    const updated = [...currentUnits, newUnit];
+    onUpdateSubject?.(subject.id, { units: updated });
+    setNewUnitTitle('');
+    setShowAddUnitForm(false);
+    onShowToast?.(`Added Unit ${nextNum}: "${newUnit.unitTitle}"`);
+  };
+
+  // Save updated course metadata
+  const handleSaveCourseInfo = (e) => {
+    e.preventDefault();
+    onUpdateSubject?.(subject.id, {
+      title: editTitle.trim() || subject.title,
+      code: editCode.trim().toUpperCase() || subject.code,
+      credits: Number.parseInt(editCredits, 10) || subject.credits,
+      category: editCategory
+    });
+    setIsEditingInfo(false);
+    onShowToast?.('Course details updated successfully!');
   };
 
   // Add assignment
@@ -132,7 +210,7 @@ export default function SubjectModal({
 
   return (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '780px' }}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '820px' }}>
         {/* Header */}
         <div className="modal-header">
           <div>
@@ -140,6 +218,15 @@ export default function SubjectModal({
               <span className="subject-code-badge">{subject.code}</span>
               <span className="info-pill">{subject.credits} Credits</span>
               <span className="info-pill">{subject.category}</span>
+              {isVerified ? (
+                <span className="term-pill-badge" style={{ backgroundColor: 'rgba(104, 143, 120, 0.15)', color: 'var(--forest-900)' }}>
+                  <IconCheckCircle size={12} /> Verified Standard Curriculum
+                </span>
+              ) : (
+                <span className="term-pill-badge" style={{ backgroundColor: 'rgba(230, 215, 175, 0.3)', color: '#8A6D3B' }}>
+                  <IconSparkles size={12} /> Student Customized
+                </span>
+              )}
               <span className="term-pill-badge" style={{ backgroundColor: 'var(--sage-100)', color: 'var(--forest-900)' }}>
                 {progressPercent}% Complete
               </span>
@@ -194,7 +281,7 @@ export default function SubjectModal({
               className={`modal-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
               onClick={() => setActiveTab('overview')}
             >
-              Overview & Details
+              Overview & Settings
             </button>
             {isPython && (
               <button
@@ -210,7 +297,7 @@ export default function SubjectModal({
 
         {/* Modal Body */}
         <div className="modal-body">
-          {/* TAB 1: UNITS & TOPICS (With Completion Checkboxes) */}
+          {/* TAB 1: UNITS & TOPICS */}
           {activeTab === 'topics' && (
             <div>
               {/* Mandatory Disclaimer */}
@@ -254,6 +341,9 @@ export default function SubjectModal({
                     }}
                   >
                     <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
                       padding: '10px 14px',
                       backgroundColor: 'rgba(23, 40, 30, 0.04)',
                       fontWeight: 700,
@@ -261,11 +351,14 @@ export default function SubjectModal({
                       color: 'var(--forest-950)',
                       borderBottom: '1px solid var(--border-subtle)'
                     }}>
-                      Unit {unit.unitNumber}: {unit.unitTitle}
+                      <span>Unit {unit.unitNumber}: {unit.unitTitle}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        {unit.topics?.length || 0} topics
+                      </span>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      {unit.topics.map((t) => {
+                      {unit.topics?.map((t) => {
                         const isDone = completedTopicIds.includes(t.id);
                         return (
                           <div
@@ -274,6 +367,7 @@ export default function SubjectModal({
                             style={{
                               display: 'flex',
                               alignItems: 'center',
+                              justifyContent: 'space-between',
                               gap: '12px',
                               padding: '10px 14px',
                               borderBottom: '1px solid rgba(23, 40, 30, 0.04)',
@@ -282,77 +376,128 @@ export default function SubjectModal({
                               transition: 'background-color 0.15s ease'
                             }}
                           >
-                            <button
-                              type="button"
-                              className={`task-checkbox-btn ${isDone ? 'checked' : ''}`}
-                              aria-label={isDone ? 'Mark topic incomplete' : 'Mark topic complete'}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onToggleTopic(t.id, t.name);
-                              }}
-                            >
-                              {isDone ? <IconCheckCircle size={18} /> : <IconCircle size={18} />}
-                            </button>
-                            <span style={{
-                              fontSize: '13px',
-                              fontWeight: 500,
-                              color: isDone ? 'var(--text-muted)' : 'var(--forest-950)',
-                              textDecoration: isDone ? 'line-through' : 'none'
-                            }}>
-                              {t.name}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                              <button
+                                type="button"
+                                className={`task-checkbox-btn ${isDone ? 'checked' : ''}`}
+                                aria-label={isDone ? 'Mark topic incomplete' : 'Mark topic complete'}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onToggleTopic(t.id, t.name);
+                                }}
+                              >
+                                {isDone ? <IconCheckCircle size={18} /> : <IconCircle size={18} />}
+                              </button>
+                              <span style={{
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                color: isDone ? 'var(--text-muted)' : 'var(--forest-950)',
+                                textDecoration: isDone ? 'line-through' : 'none'
+                              }}>
+                                {t.name}
+                              </span>
+                            </div>
+
+                            {/* Optional delete button for student custom topics */}
+                            {t.isCustom && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteTopic(e, t.id)}
+                                title="Delete custom topic"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: 'var(--text-muted)',
+                                  cursor: 'pointer',
+                                  padding: '4px'
+                                }}
+                              >
+                                <IconTrash size={14} />
+                              </button>
+                            )}
                           </div>
                         );
                       })}
                     </div>
                   </div>
                 ))}
-
-                {/* Custom topics added by student */}
-                {customTopics.length > 0 && (
-                  <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--bg-card-warm)', overflow: 'hidden' }}>
-                    <div style={{ padding: '10px 14px', fontWeight: 700, fontSize: '13px', color: 'var(--forest-950)', borderBottom: '1px solid var(--border-subtle)' }}>
-                      Student Custom Topics
-                    </div>
-                    {customTopics.map((ct) => {
-                      const isDone = completedTopicIds.includes(ct.id);
-                      return (
-                        <div
-                          key={ct.id}
-                          onClick={() => onToggleTopic(ct.id, ct.name)}
-                          style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderBottom: '1px solid rgba(23, 40, 30, 0.04)', cursor: 'pointer' }}
-                        >
-                          <button
-                            type="button"
-                            className={`task-checkbox-btn ${isDone ? 'checked' : ''}`}
-                            aria-label="Toggle custom topic"
-                          >
-                            {isDone ? <IconCheckCircle size={18} /> : <IconCircle size={18} />}
-                          </button>
-                          <span style={{ fontSize: '13px', color: isDone ? 'var(--text-muted)' : 'var(--forest-950)', textDecoration: isDone ? 'line-through' : 'none' }}>
-                            {ct.name}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
 
-              {/* Add custom topic form */}
-              <form onSubmit={handleAddTopic} style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                <input
-                  type="text"
-                  className="add-task-input"
-                  placeholder="Add specific syllabus topic or sub-unit..."
-                  value={newTopicName}
-                  onChange={(e) => setNewTopicName(e.target.value)}
-                />
-                <button type="submit" className="add-task-btn">
-                  <IconPlus size={15} />
-                  <span>Add Topic</span>
-                </button>
-              </form>
+              {/* Add Topic into Unit Form */}
+              <div style={{ marginTop: '20px', padding: '16px', backgroundColor: 'var(--bg-card-warm)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--forest-950)', display: 'block', marginBottom: '8px' }}>
+                  Add Topic to Unit
+                </span>
+                <form onSubmit={handleAddTopic} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <select
+                    className="add-task-input"
+                    style={{ width: 'auto', minWidth: '130px' }}
+                    value={selectedUnitNum}
+                    onChange={(e) => setSelectedUnitNum(Number.parseInt(e.target.value, 10))}
+                  >
+                    {(subject.units || []).map((u) => (
+                      <option key={u.unitNumber} value={u.unitNumber}>
+                        Unit {u.unitNumber}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="text"
+                    style={{ flex: 1, minWidth: '200px' }}
+                    className="add-task-input"
+                    placeholder="Enter topic name (e.g. Asymptotic Complexity & Master Theorem)..."
+                    value={newTopicName}
+                    onChange={(e) => setNewTopicName(e.target.value)}
+                  />
+
+                  <button type="submit" className="add-task-btn">
+                    <IconPlus size={15} />
+                    <span>Add Topic</span>
+                  </button>
+                </form>
+
+                {/* Add New Unit Toggle */}
+                <div style={{ marginTop: '12px' }}>
+                  {!showAddUnitForm ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddUnitForm(true)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--forest-800)',
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        padding: 0
+                      }}
+                    >
+                      + Add a New Unit to this Course
+                    </button>
+                  ) : (
+                    <form onSubmit={handleAddNewUnit} style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <input
+                        type="text"
+                        className="add-task-input"
+                        placeholder="Enter new Unit Title (e.g. Distributed Consensus & Raft)..."
+                        value={newUnitTitle}
+                        onChange={(e) => setNewUnitTitle(e.target.value)}
+                      />
+                      <button type="submit" className="add-task-btn">
+                        <span>Save Unit</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="sem2-action-btn"
+                        onClick={() => setShowAddUnitForm(false)}
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -361,7 +506,7 @@ export default function SubjectModal({
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--forest-950)' }}>
-                  Semester 1 Assignment Tracker
+                  Course Assignment Tracker
                 </span>
                 <span className="info-pill">
                   {assignments.filter((a) => a.status === 'Submitted').length} of {assignments.length} Submitted
@@ -402,58 +547,46 @@ export default function SubjectModal({
                           }}>
                             {asg.title}
                           </div>
-                          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
                             <IconClock size={12} />
-                            <span>Due Date: {asg.dueDate}</span>
+                            <span>Due: {asg.dueDate}</span>
+                            <span>•</span>
+                            <span style={{ color: isSubmitted ? 'var(--forest-800)' : '#B45309', fontWeight: 600 }}>
+                              {asg.status}
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span
-                          className="task-subject-tag"
-                          style={{
-                            backgroundColor: isSubmitted ? '#DCFCE7' : '#FEF3C7',
-                            color: isSubmitted ? '#166534' : '#92400E'
-                          }}
-                        >
-                          {isSubmitted ? 'Submitted' : 'Pending'}
-                        </span>
-                        <button
-                          type="button"
-                          className="task-delete-btn"
-                          onClick={() => handleDeleteAssignment(asg.id)}
-                          title="Delete assignment"
-                          style={{ opacity: 1 }}
-                        >
-                          <IconTrash size={15} />
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAssignment(asg.id)}
+                        className="modal-close-btn"
+                        style={{ width: '28px', height: '28px', padding: 0 }}
+                        aria-label="Delete assignment"
+                      >
+                        <IconTrash size={14} />
+                      </button>
                     </div>
                   );
                 })}
-
-                {assignments.length === 0 && (
-                  <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                    No assignments recorded for this subject yet. Add one below!
-                  </div>
-                )}
               </div>
 
-              {/* Add assignment form */}
-              <form onSubmit={handleAddAssignment} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', padding: '14px', backgroundColor: 'var(--bg-card-warm)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+              {/* Add Assignment Form */}
+              <form onSubmit={handleAddAssignment} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <input
                   type="text"
+                  required
                   className="add-task-input"
-                  style={{ flex: 2, minWidth: '180px' }}
-                  placeholder="Assignment title (e.g. Lab experiment 2 writeup)..."
+                  style={{ flex: 2, minWidth: '200px' }}
+                  placeholder="New assignment or problem set title..."
                   value={newAsgTitle}
                   onChange={(e) => setNewAsgTitle(e.target.value)}
                 />
                 <input
                   type="date"
                   className="add-task-input"
-                  style={{ flex: 1, minWidth: '130px' }}
+                  style={{ flex: 1, minWidth: '140px' }}
                   value={newAsgDate}
                   onChange={(e) => setNewAsgDate(e.target.value)}
                 />
@@ -467,146 +600,248 @@ export default function SubjectModal({
 
           {/* TAB 3: IMPORTANT QUESTIONS */}
           {activeTab === 'questions' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                Sample core concept practice questions. Click "Reveal Model Answer" to inspect key principles.
-              </p>
-              {subject.importantQuestions?.map((iq, idx) => {
-                const isRevealed = !!revealedQuestions[iq.id];
-                return (
-                  <div
-                    key={iq.id}
-                    style={{
-                      padding: '16px',
-                      borderRadius: 'var(--radius-sm)',
-                      backgroundColor: 'var(--bg-card-warm)',
-                      border: '1px solid var(--border-subtle)'
-                    }}
-                  >
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--forest-950)', marginBottom: '8px' }}>
-                      Q{idx + 1}: {iq.question}
-                    </div>
+            <div>
+              <div style={{ marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--forest-950)', margin: '0 0 4px' }}>
+                  High-Yield Examination Questions
+                </h3>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>
+                  Curated representative questions frequently tested in university semester examinations.
+                </p>
+              </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <button
-                        type="button"
-                        className="section-action-btn"
-                        onClick={() => toggleQuestionReveal(iq.id)}
-                      >
-                        <span>{isRevealed ? 'Hide Answer' : 'Reveal Model Answer'}</span>
-                      </button>
-                    </div>
-
-                    {isRevealed && (
-                      <div
-                        style={{
-                          marginTop: '10px',
-                          padding: '12px 14px',
-                          backgroundColor: '#FFFFFF',
-                          borderRadius: '8px',
-                          border: '1px solid var(--border-subtle)',
-                          fontSize: '13px',
-                          color: 'var(--text-body)',
-                          lineHeight: 1.5,
-                          whiteSpace: 'pre-wrap'
-                        }}
-                      >
-                        <strong>Model Answer: </strong>
-                        {iq.answer}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {(subject.importantQuestions || []).map((q, idx) => {
+                  const isRevealed = revealedQuestions[q.id];
+                  return (
+                    <div
+                      key={q.id}
+                      style={{
+                        padding: '14px',
+                        borderRadius: 'var(--radius-sm)',
+                        backgroundColor: 'var(--bg-card-warm)',
+                        border: '1px solid var(--border-subtle)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                        <div style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--forest-950)' }}>
+                          Q{idx + 1}. {q.question}
+                        </div>
+                        <button
+                          type="button"
+                          className="modal-tab-btn"
+                          style={{ fontSize: '11.5px', padding: '4px 10px', height: 'auto', flexShrink: 0 }}
+                          onClick={() => toggleQuestionReveal(q.id)}
+                        >
+                          {isRevealed ? 'Hide Solution' : 'Show Solution'}
+                        </button>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+
+                      {isRevealed && (
+                        <div style={{
+                          marginTop: '10px',
+                          padding: '12px',
+                          borderRadius: '6px',
+                          backgroundColor: '#FFFFFF',
+                          border: '1px solid var(--border-sage)',
+                          fontSize: '13px',
+                          color: 'var(--forest-950)',
+                          lineHeight: 1.6
+                        }}>
+                          <strong>Solution / Framework: </strong>
+                          {q.answer}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
           {/* TAB 4: PERSONAL NOTES */}
           {activeTab === 'notes' && (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--forest-950)' }}>
-                  Notes linked to {subject.code}
-                </span>
-                <span className="info-pill">{subjectNotes.length} Saved</span>
+              <div style={{ marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--forest-950)', margin: '0 0 4px' }}>
+                  Course Study Notes ({subjectNotes.length})
+                </h3>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>
+                  Quick study notes, formulas, and revision thoughts saved for this course.
+                </p>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
-                {subjectNotes.map((n) => (
-                  <div
-                    key={n.id}
-                    style={{
-                      padding: '14px',
-                      borderRadius: 'var(--radius-sm)',
-                      backgroundColor: 'var(--bg-card-warm)',
-                      border: '1px solid var(--border-subtle)'
-                    }}
-                  >
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--forest-950)', marginBottom: '4px' }}>
-                      {n.title}
+              {subjectNotes.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
+                  {subjectNotes.map((n) => (
+                    <div
+                      key={n.id}
+                      style={{
+                        padding: '14px',
+                        borderRadius: 'var(--radius-sm)',
+                        backgroundColor: 'var(--bg-card-warm)',
+                        border: '1px solid var(--border-subtle)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '13.5px', color: 'var(--forest-950)' }}>{n.title}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{n.updatedAt}</span>
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--forest-900)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                        {n.content}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-body)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                      {n.content}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                      Last updated: {n.updatedAt}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  No personal notes added yet for {subject.shortName}.
+                </div>
+              )}
 
-                {subjectNotes.length === 0 && (
-                  <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                    No personal notes saved for this subject yet. Create one below!
-                  </div>
-                )}
-              </div>
-
-              {/* Quick Note Form */}
-              <form onSubmit={handleAddQuickNote} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '14px', backgroundColor: 'var(--bg-card-warm)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+              {/* Add Note Form */}
+              <form onSubmit={handleAddQuickNote} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <input
                   type="text"
+                  required
                   className="add-task-input"
-                  placeholder="Note title (e.g. Eigenvalues Theorem Recap)..."
+                  placeholder="Note Title (e.g. Eigenvalue shortcuts)..."
                   value={quickNoteTitle}
                   onChange={(e) => setQuickNoteTitle(e.target.value)}
                 />
                 <textarea
-                  className="add-task-input"
                   rows={3}
-                  placeholder="Write your study notes, formulas, or key reminders here..."
+                  className="add-task-input"
+                  style={{ resize: 'vertical' }}
+                  placeholder="Write your study notes, derivations, or important formulas here..."
                   value={quickNoteBody}
                   onChange={(e) => setQuickNoteBody(e.target.value)}
-                  style={{ resize: 'vertical' }}
                 />
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button type="submit" className="add-task-btn">
-                    <IconNotes size={15} />
-                    <span>Save Note</span>
-                  </button>
-                </div>
+                <button type="submit" className="add-task-btn" style={{ alignSelf: 'flex-start' }}>
+                  <IconNotes size={15} />
+                  <span>Save Note to Subject</span>
+                </button>
               </form>
             </div>
           )}
 
-          {/* TAB 5: OVERVIEW & DETAILS */}
+          {/* TAB 5: OVERVIEW & SETTINGS */}
           {activeTab === 'overview' && (
-            <div style={{ fontSize: '14px', color: 'var(--text-body)', lineHeight: 1.6 }}>
-              <p style={{ marginBottom: '16px' }}>{subject.description}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              {!isEditingInfo ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--forest-950)', margin: 0 }}>
+                      Course Metadata & Scope
+                    </h3>
+                    <button
+                      type="button"
+                      className="sem2-action-btn"
+                      onClick={() => {
+                        setEditTitle(subject.title);
+                        setEditCode(subject.code);
+                        setEditCredits(subject.credits);
+                        setEditCategory(subject.category);
+                        setIsEditingInfo(true);
+                      }}
+                    >
+                      Edit Course Details
+                    </button>
+                  </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-                <div style={{ padding: '12px', backgroundColor: 'var(--bg-card-warm)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Department</div>
-                  <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>{subject.department}</div>
-                </div>
-                <div style={{ padding: '12px', backgroundColor: 'var(--bg-card-warm)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Credits</div>
-                  <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>{subject.credits} Credits</div>
-                </div>
-                <div style={{ padding: '12px', backgroundColor: 'var(--bg-card-warm)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Class Hours</div>
-                  <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>{subject.weeklyHours}</div>
-                </div>
-              </div>
+                  <p style={{ fontSize: '13.5px', color: 'var(--forest-900)', lineHeight: 1.6, margin: 0 }}>
+                    {subject.description || 'Comprehensive university engineering curriculum course.'}
+                  </p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                    <div style={{ padding: '12px', backgroundColor: 'var(--bg-card-warm)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Department</div>
+                      <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>{subject.department || 'Engineering Faculty'}</div>
+                    </div>
+                    <div style={{ padding: '12px', backgroundColor: 'var(--bg-card-warm)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Credits</div>
+                      <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>{subject.credits} Credits</div>
+                    </div>
+                    <div style={{ padding: '12px', backgroundColor: 'var(--bg-card-warm)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Category</div>
+                      <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>{subject.category}</div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <form onSubmit={handleSaveCourseInfo} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--forest-950)', margin: 0 }}>
+                    Edit Course Details
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        Course Code
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        className="add-task-input"
+                        value={editCode}
+                        onChange={(e) => setEditCode(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        Course Title
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        className="add-task-input"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        Credits
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="8"
+                        className="add-task-input"
+                        value={editCredits}
+                        onChange={(e) => setEditCredits(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        Category
+                      </label>
+                      <input
+                        type="text"
+                        className="add-task-input"
+                        value={editCategory}
+                        onChange={(e) => setEditCategory(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button type="submit" className="add-task-btn">
+                      <IconCheckCircle size={15} />
+                      <span>Save Changes</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="sem2-action-btn"
+                      onClick={() => setIsEditingInfo(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
 
               <div style={{ padding: '14px', backgroundColor: 'rgba(104, 143, 120, 0.12)', borderRadius: '8px', border: '1px solid var(--border-sage)', fontSize: '12.5px' }}>
                 <strong>Academic Notice: </strong>

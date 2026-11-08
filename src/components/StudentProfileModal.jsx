@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { IconX, IconCheckCircle, IconSparkles } from './Icons';
+import React, { useState, useMemo } from 'react';
+import { IconX, IconCheckCircle, IconSparkles, IconBook } from './Icons';
 import {
   ENGINEERING_BRANCHES,
   STANDARD_DEGREES,
@@ -8,6 +8,9 @@ import {
   ACADEMIC_YEARS,
   getBranchByName
 } from '../data/branchesData';
+import { getActiveCurriculumSubjects } from '../data/curriculumData';
+import { getCustomSubjects, getSubjectOverrides } from '../services/storage';
+import { INDIAN_UNIVERSITIES } from '../data/universitiesData';
 
 export default function StudentProfileModal({
   profile,
@@ -27,6 +30,7 @@ export default function StudentProfileModal({
     branchId: profile.branchId || matchedBranch?.id || 'cse',
     year: profile.year || 'First Year',
     semester: profile.semester || 'Semester 1',
+    admissionBatch: profile.admissionBatch || '2024 - 2028',
     curriculum: profile.curriculum || 'AICTE 2024 Model Curriculum',
     profilePic: profile.profilePic || null,
     studyGoals: {
@@ -41,6 +45,18 @@ export default function StudentProfileModal({
   const [isCustomBranch, setIsCustomBranch] = useState(isCustomInitial);
   const [customBranchText, setCustomBranchText] = useState(isCustomInitial ? initialBranchName : '');
   const [imageError, setImageError] = useState('');
+
+  const semNum = Number.parseInt((formData.semester || 'Semester 1').replace(/\D/g, ''), 10) || 1;
+  const currentEnrolledSubjects = useMemo(() => {
+    return getActiveCurriculumSubjects({
+      university: formData.college,
+      branch: formData.branch,
+      branchId: formData.branchId || 'cse',
+      semester: semNum,
+      customSubjects: getCustomSubjects(),
+      subjectOverrides: getSubjectOverrides()
+    });
+  }, [formData.college, formData.branch, formData.branchId, semNum]);
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({
@@ -143,7 +159,10 @@ export default function StudentProfileModal({
       return;
     }
 
-    onSave(formData);
+    onSave({
+      ...formData,
+      onboardingCompleted: true
+    });
     onShowToast?.('Academic profile & curriculum preferences updated!');
     onClose();
   };
@@ -323,15 +342,11 @@ export default function StudentProfileModal({
                     placeholder="e.g. Autonomous College / Anna Univ / VTU"
                   />
                   <datalist id="colleges-suggestions">
-                    <option value="Autonomous Engineering College" />
-                    <option value="AICTE Model Institute" />
-                    <option value="Anna University Affiliated" />
-                    <option value="Visvesvaraya Technological University (VTU)" />
-                    <option value="Jawaharlal Nehru Technological University (JNTU)" />
-                    <option value="Dr. A.P.J. Abdul Kalam Technical University (AKTU)" />
-                    <option value="Indian Institute of Technology (IIT)" />
-                    <option value="National Institute of Technology (NIT)" />
-                    <option value="State Technical University" />
+                    {INDIAN_UNIVERSITIES.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.shortName} ({u.location})
+                      </option>
+                    ))}
                   </datalist>
                 </div>
 
@@ -444,6 +459,67 @@ export default function StudentProfileModal({
                     ))}
                   </datalist>
                 </div>
+
+                {/* Admission Batch */}
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                    Admission Batch
+                  </label>
+                  <input
+                    type="text"
+                    list="batches-suggestions"
+                    className="add-task-input"
+                    value={formData.admissionBatch}
+                    onChange={(e) => handleInputChange('admissionBatch', e.target.value)}
+                    placeholder="e.g. 2024 - 2028 / 2023 - 2027"
+                  />
+                  <datalist id="batches-suggestions">
+                    <option value="2024 - 2028" />
+                    <option value="2023 - 2027" />
+                    <option value="2025 - 2029" />
+                    <option value="2022 - 2026" />
+                    <option value="2021 - 2025" />
+                  </datalist>
+                </div>
+              </div>
+
+              {/* Current Subjects List Display */}
+              <div style={{ marginTop: '14px', padding: '14px 16px', backgroundColor: 'var(--bg-card-warm)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <IconBook size={15} style={{ color: 'var(--forest-800)' }} />
+                    <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--forest-950)' }}>
+                      Current Subjects ({currentEnrolledSubjects.length} Courses enrolled for {formData.semester}):
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Branch: {formData.branch}
+                  </span>
+                </div>
+                {currentEnrolledSubjects.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {currentEnrolledSubjects.map((sub) => (
+                      <span
+                        key={sub.id}
+                        style={{
+                          fontSize: '11.5px',
+                          padding: '3px 9px',
+                          borderRadius: '12px',
+                          backgroundColor: 'rgba(104, 143, 120, 0.14)',
+                          color: 'var(--forest-900)',
+                          fontWeight: 600,
+                          border: '1px solid var(--border-sage)'
+                        }}
+                      >
+                        <strong>{sub.code}:</strong> {sub.title} ({sub.credits} credits)
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                    No subjects configured for {formData.semester} yet. You can upload your university syllabus in PDF format or add courses under My Courses.
+                  </div>
+                )}
               </div>
             </div>
 

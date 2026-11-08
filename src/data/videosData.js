@@ -253,37 +253,8 @@ export const VIDEO_LESSONS = [
     subjectCode: 'MATH 101',
     subjectTitle: 'Engineering Mathematics',
     unitNumber: 2,
-    unitTitle: 'Unit 2: Matrices & Linear Systems',
-    topicName: 'The Determinant as Spatial Scaling Factor',
-    title: 'The Determinant: Area Scaling & Invertibility (Essence of Linear Algebra - Chapter 6)',
-    channel: '3Blue1Brown',
-    instructor: 'Grant Sanderson',
-    youtubeId: 'Ip3X9LOh2dk',
-    duration: '10:03',
-    durationSeconds: 603,
-    level: 'Intermediate',
-    views: '4.6M',
-    popularityScore: 95,
-    addedDate: '2026-08-11',
-    description:
-      'Geometric meaning of the determinant of a matrix. Explores how det(A) measures the factor by which areas (in 2D) or volumes (in 3D) are scaled by a linear transformation, and why det(A) = 0 signals dimensional collapse and matrix singularity.',
-    relatedNotes: [
-      'Geometric Interpretation: The determinant det(A) measures the factor by which any region area (in 2D) or volume (in 3D) is scaled under the transformation.',
-      'Sign of Determinant: Negative determinant indicates orientation has flipped (e.g. plane turned inside out, right-handed system turned into left-handed).',
-      'Singular Matrix: If det(A) = 0, the transformation squishes space into a lower dimension (2D plane into a line or point). Such matrices cannot be inverted because information is permanently lost.',
-      'Multiplicative Property: det(A * B) = det(A) * det(B). Scaling space first by B and then by A multiplies the respective scaling factors.',
-      'Inverse Formula: A^(-1) = (1 / det(A)) * adj(A), valid if and only if det(A) != 0.'
-    ],
-    topicsCovered: ['Determinant Geometric Meaning', 'Area & Volume Scaling', 'Singular Matrices', 'det(AB) = det(A)det(B)', 'Matrix Inverse']
-  },
-  {
-    id: 'vid-math-eigen',
-    subjectId: 'math101',
-    subjectCode: 'MATH 101',
-    subjectTitle: 'Engineering Mathematics',
-    unitNumber: 2,
-    unitTitle: 'Unit 2: Matrices & Linear Systems',
-    topicName: 'Eigenvectors, Eigenvalues & Diagonalization',
+
+
     title: 'Eigenvectors & Eigenvalues: Geometry & Meaning (Essence of Linear Algebra - Chapter 14)',
     channel: '3Blue1Brown',
     instructor: 'Grant Sanderson',

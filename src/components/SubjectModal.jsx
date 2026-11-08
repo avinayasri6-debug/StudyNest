@@ -10,9 +10,11 @@ import {
   IconVideo,
   IconPlus,
   IconSparkles,
-  IconTrash
+  IconTrash,
+  IconUpload,
+  IconUser
 } from './Icons';
-import { getAllSubjectTopics, SAMPLE_SYLLABUS_DISCLAIMER } from '../data/curriculumData';
+import { getAllSubjectTopics, getCurriculumSourceInfo, SAMPLE_SYLLABUS_DISCLAIMER } from '../data/curriculumData';
 
 export default function SubjectModal({
   subject,
@@ -59,7 +61,7 @@ export default function SubjectModal({
   const completedCount = allTopics.filter((t) => completedTopicIds.includes(t.id)).length;
   const progressPercent = totalTopics > 0 ? Math.round((completedCount / totalTopics) * 100) : 0;
   const isPython = subject.id === 'cse101';
-  const isVerified = subject.verified !== false && subject.source !== 'custom';
+  const sourceInfo = getCurriculumSourceInfo(subject);
 
   // Toggle question answers
   const toggleQuestionReveal = (qId) => {
@@ -218,15 +220,21 @@ export default function SubjectModal({
               <span className="subject-code-badge">{subject.code}</span>
               <span className="info-pill">{subject.credits} Credits</span>
               <span className="info-pill">{subject.category}</span>
-              {isVerified ? (
-                <span className="term-pill-badge" style={{ backgroundColor: 'rgba(104, 143, 120, 0.15)', color: 'var(--forest-900)' }}>
-                  <IconCheckCircle size={12} /> Verified Standard Curriculum
-                </span>
-              ) : (
-                <span className="term-pill-badge" style={{ backgroundColor: 'rgba(230, 215, 175, 0.3)', color: '#8A6D3B' }}>
-                  <IconSparkles size={12} /> Student Customized
-                </span>
-              )}
+              <span
+                className="term-pill-badge"
+                style={{
+                  backgroundColor: sourceInfo.bg,
+                  color: sourceInfo.color,
+                  border: `1px solid ${sourceInfo.border}`
+                }}
+                title={sourceInfo.description}
+              >
+                {sourceInfo.type === 'verified' && <IconCheckCircle size={12} />}
+                {sourceInfo.type === 'sample_template' && <IconSparkles size={12} />}
+                {sourceInfo.type === 'imported' && <IconUpload size={12} />}
+                {sourceInfo.type === 'custom' && <IconUser size={12} />}
+                {sourceInfo.label}
+              </span>
               <span className="term-pill-badge" style={{ backgroundColor: 'var(--sage-100)', color: 'var(--forest-900)' }}>
                 {progressPercent}% Complete
               </span>
@@ -300,21 +308,37 @@ export default function SubjectModal({
           {/* TAB 1: UNITS & TOPICS */}
           {activeTab === 'topics' && (
             <div>
-              {/* Mandatory Disclaimer */}
+              {/* Contextual Source & Guidance Notice */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
                 padding: '10px 14px',
-                backgroundColor: 'rgba(104, 143, 120, 0.12)',
+                backgroundColor: sourceInfo.bg,
                 borderRadius: '8px',
-                border: '1px solid var(--border-sage)',
+                border: `1px solid ${sourceInfo.border}`,
                 marginBottom: '18px',
                 fontSize: '12.5px',
-                color: 'var(--forest-900)'
+                color: sourceInfo.color
               }}>
-                <IconSparkles size={16} style={{ flexShrink: 0 }} />
-                <span>{SAMPLE_SYLLABUS_DISCLAIMER}</span>
+                {sourceInfo.type === 'verified' && <IconCheckCircle size={16} style={{ flexShrink: 0 }} />}
+                {sourceInfo.type === 'sample_template' && <IconSparkles size={16} style={{ flexShrink: 0 }} />}
+                {sourceInfo.type === 'imported' && <IconUpload size={16} style={{ flexShrink: 0 }} />}
+                {sourceInfo.type === 'custom' && <IconUser size={16} style={{ flexShrink: 0 }} />}
+                <span>
+                  {sourceInfo.type === 'verified' && (
+                    <><strong>Officially Verified Curriculum: </strong>Checked against authoritative university syllabus ({sourceInfo.evidence}).</>
+                  )}
+                  {sourceInfo.type === 'sample_template' && (
+                    <>{SAMPLE_SYLLABUS_DISCLAIMER}</>
+                  )}
+                  {sourceInfo.type === 'imported' && (
+                    <><strong>Imported Syllabus Content: </strong>Extracted from syllabus document{sourceInfo.importedFrom ? ` (${sourceInfo.importedFrom})` : ''}. Review and edit units to match your curriculum.</>
+                  )}
+                  {sourceInfo.type === 'custom' && (
+                    <><strong>Student Custom Course: </strong>Configured directly by you. Track topics and progress according to your syllabus.</>
+                  )}
+                </span>
               </div>
 
               {/* Progress Bar Header */}
@@ -766,6 +790,92 @@ export default function SubjectModal({
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Category</div>
                       <div style={{ fontWeight: 600, color: 'var(--forest-950)' }}>{subject.category}</div>
                     </div>
+                  </div>
+
+                  {/* Verification & Trust Status */}
+                  <div style={{
+                    padding: '14px 16px',
+                    backgroundColor: 'var(--bg-card-warm)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-subtle)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+                      Curriculum Verification & Trust Status
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <span
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          color: sourceInfo.color,
+                          backgroundColor: sourceInfo.bg,
+                          border: `1px solid ${sourceInfo.border}`,
+                          padding: '3px 10px',
+                          borderRadius: 'var(--radius-full)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px'
+                        }}
+                      >
+                        {sourceInfo.type === 'verified' && <IconCheckCircle size={13} />}
+                        {sourceInfo.type === 'sample_template' && <IconSparkles size={13} />}
+                        {sourceInfo.type === 'imported' && <IconUpload size={13} />}
+                        {sourceInfo.type === 'custom' && <IconUser size={13} />}
+                        {sourceInfo.label}
+                      </span>
+                      <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                        {sourceInfo.type === 'verified'
+                          ? `Officially verified against ${sourceInfo.evidence}`
+                          : sourceInfo.type === 'sample_template'
+                          ? `${subject.templateName || 'Sample Curriculum Template'} · Not an official verification guarantee`
+                          : sourceInfo.type === 'imported'
+                          ? `Extracted from uploaded syllabus document${sourceInfo.importedFrom ? ` (${sourceInfo.importedFrom})` : ''} · Unverified by institution`
+                          : `Student Workspace Custom Subject`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Course Learning Objectives */}
+                  <div style={{ padding: '14px 16px', backgroundColor: 'var(--bg-card-warm)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--forest-950)', marginBottom: '8px' }}>
+                      🎯 Course Learning Objectives:
+                    </div>
+                    {subject.learningObjectives && subject.learningObjectives.length > 0 ? (
+                      <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: 'var(--text-body)', lineHeight: 1.6 }}>
+                        {subject.learningObjectives.map((obj, i) => (
+                          <li key={i}>{obj}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        1. Formulate mathematical, computational, and physical governing models for {subject.title}.<br />
+                        2. Apply core analytical techniques and solve practical engineering problems.<br />
+                        3. Demonstrate comprehensive theoretical and laboratory competence meeting academic regulation standards.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Recommended Resources & Textbooks */}
+                  <div style={{ padding: '14px 16px', backgroundColor: 'var(--bg-card-warm)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--forest-950)', marginBottom: '8px' }}>
+                      📚 Recommended Textbooks & Reference Resources:
+                    </div>
+                    {subject.recommendedResources && subject.recommendedResources.length > 0 ? (
+                      <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: 'var(--text-body)', lineHeight: 1.6 }}>
+                        {subject.recommendedResources.map((res, i) => (
+                          <li key={i}>{res}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        • University Prescribed Core Textbooks & Syllabi Reference Manuals<br />
+                        • NPTEL & Open Courseware supplementary materials<br />
+                        • Sagevanta Curated Video Hub & Interactive Lab simulations
+                      </div>
+                    )}
                   </div>
                 </>
               ) : (

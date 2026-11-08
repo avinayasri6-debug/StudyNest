@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { SEMESTER_1_SUBJECTS } from '../data/subjectsData';
-import { getActiveCurriculumSubjects } from '../data/curriculumData';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { getActiveCurriculumSubjects, parseSemesterNumber } from '../data/curriculumData';
 import { SUBJECT_STARTER_PROMPTS, QUICK_ACTIONS, EXPLANATION_MODES } from '../data/aiPromptsData';
 import {
   IconSparkles,
@@ -39,18 +38,139 @@ function getTimestamp() {
   return new Date().toISOString();
 }
 
+function resolveStarterPrompts(subject) {
+  if (!subject) return SUBJECT_STARTER_PROMPTS.math101;
+
+  // 1. Direct ID match if legacy
+  if (SUBJECT_STARTER_PROMPTS[subject.id]) {
+    return SUBJECT_STARTER_PROMPTS[subject.id];
+  }
+
+  // 2. Semantic matching on title, shortName, code
+  const title = (subject.title || '').toLowerCase();
+  const shortName = (subject.shortName || '').toLowerCase();
+  const code = (subject.code || '').toLowerCase();
+
+  // Mathematics
+  if (
+    title.includes('math') ||
+    title.includes('calculus') ||
+    title.includes('algebra') ||
+    code.includes('math') ||
+    code.includes('bs 101') ||
+    shortName.includes('math') ||
+    shortName.includes('algebra')
+  ) {
+    return SUBJECT_STARTER_PROMPTS.math101;
+  }
+
+  // Physics
+  if (
+    title.includes('physic') ||
+    title.includes('optics') ||
+    title.includes('quantum') ||
+    code.includes('phy') ||
+    code.includes('bs 102') ||
+    shortName.includes('physic')
+  ) {
+    return SUBJECT_STARTER_PROMPTS.phy102;
+  }
+
+  // Python / Computing
+  if (
+    title.includes('python') ||
+    title.includes('programming') ||
+    title.includes('problem solving') ||
+    code.includes('cse 101') ||
+    code.includes('cs 101') ||
+    shortName.includes('python')
+  ) {
+    return SUBJECT_STARTER_PROMPTS.cs103;
+  }
+
+  // Digital Electronics
+  if (
+    title.includes('electronics') ||
+    title.includes('digital logic') ||
+    code.includes('ece') ||
+    code.includes('ee') ||
+    shortName.includes('electronics')
+  ) {
+    return SUBJECT_STARTER_PROMPTS.ee104;
+  }
+
+  // Digital Skill Workshop
+  if (
+    title.includes('digital skill') ||
+    title.includes('workshop') ||
+    code.includes('eng 103') ||
+    shortName.includes('workshop')
+  ) {
+    return SUBJECT_STARTER_PROMPTS.ds105;
+  }
+
+  // Quantitative Aptitude
+  if (
+    title.includes('aptitude') ||
+    title.includes('reasoning') ||
+    code.includes('eng 104') ||
+    shortName.includes('aptitude')
+  ) {
+    return SUBJECT_STARTER_PROMPTS.qa106;
+  }
+
+  // Technical English / Communication
+  if (
+    title.includes('english') ||
+    title.includes('communication') ||
+    code.includes('hum') ||
+    shortName.includes('english')
+  ) {
+    return SUBJECT_STARTER_PROMPTS.eng107;
+  }
+
+  // 3. For custom, imported, or other courses: Generate dynamic contextual prompts based on the subject's title
+  const displayName = subject.shortName || subject.title || 'Course';
+  return [
+    {
+      title: `Core Principles of ${displayName}`,
+      prompt: `Explain the fundamental concepts and core theoretical principles of ${displayName} step-by-step with clear engineering examples.`,
+      action: 'concept'
+    },
+    {
+      title: `Key Formulas & Derivations`,
+      prompt: `What are the most critical governing equations, formulas, and derivations in ${displayName}? Provide a concise formula reference sheet.`,
+      action: 'numerical'
+    },
+    {
+      title: `Exam Practice Questions`,
+      prompt: `Generate 3 high-yield university exam-style questions with detailed step-by-step solutions for ${displayName}.`,
+      action: 'questions'
+    },
+    {
+      title: `Unit-by-Unit Study Summary`,
+      prompt: `Provide a structured revision summary of the core syllabus topics for ${displayName}, highlighting common exam pitfalls and high-weightage areas.`,
+      action: 'summary'
+    }
+  ];
+}
+
 export default function AIAssistantView({
   profile,
   conversations = [],
   onSaveConversations,
   onNavigate,
   onShowToast,
-  onSaveNote
+  onSaveNote,
+  customSubjects = [],
+  subjectOverrides = {}
 }) {
   // Stored preferences
   const settings = getAISettings();
 
   const [activeSubjectId, setActiveSubjectId] = useState(() => settings.defaultSubjectId || 'math101');
+  const [selectedUnitNum, setSelectedUnitNum] = useState('all');
+  const [selectedTopicId, setSelectedTopicId] = useState('all');
   const [activeMode, setActiveMode] = useState(() => settings.defaultMode || 'intermediate');
   const [activeChatId, setActiveChatId] = useState(() => getAIActiveChatId() || null);
   const [inputMessage, setInputMessage] = useState('');
@@ -135,14 +255,40 @@ export default function AIAssistantView({
     saveAISettings({ defaultSubjectId: activeSubjectId, defaultMode: activeMode });
   }, [activeSubjectId, activeMode]);
 
-  // Active Subject List based on student's branch & semester
-  const semNum = Number.parseInt((profile?.semester || 'Semester 1').replace(/\D/g, ''), 10) || 1;
-  const availableSubjects = getActiveCurriculumSubjects({
-    branchId: profile?.branchId || 'cse',
-    semester: semNum
-  });
-  const subjectList = availableSubjects.length > 0 ? availableSubjects : SEMESTER_1_SUBJECTS;
-  const currentSubject = subjectList.find((s) => s.id === activeSubjectId) || subjectList[0];
+  // Active Subject List based on student's branch & semester + custom/uploaded courses
+  const semNum = parseSemesterNumber(profile?.semester);
+  const availableSubjects = useMemo(() => {
+    return getActiveCurriculumSubjects({
+      profile,
+      branchId: profile?.branchId || 'cse',
+      semester: semNum,
+      customSubjects,
+      subjectOverrides
+    });
+  }, [profile, semNum, customSubjects, subjectOverrides]);
+
+  // Provide branch-appropriate fallback if no courses configured yet
+  const fallbackSubject = useMemo(() => ({
+    id: `general-${profile?.branchId || 'eng'}`,
+    code: `${(profile?.branch || 'ENG').split(' ')[0].toUpperCase()} 101`,
+    title: `${profile?.branch || 'Engineering'} Core Studies`,
+    shortName: profile?.branch || 'Engineering',
+    credits: 4,
+    units: []
+  }), [profile?.branch, profile?.branchId]);
+
+  const subjectList = useMemo(() => {
+    return availableSubjects.length > 0 ? availableSubjects : [fallbackSubject];
+  }, [availableSubjects, fallbackSubject]);
+
+  const currentSubject = useMemo(() => {
+    return subjectList.find((s) => s.id === activeSubjectId) || subjectList[0];
+  }, [subjectList, activeSubjectId]);
+
+  const currentSubjectUnits = currentSubject?.units || [];
+  const availableTopics = selectedUnitNum === 'all'
+    ? currentSubjectUnits.flatMap((u) => u.topics || [])
+    : ((currentSubjectUnits.find((u) => String(u.unitNumber) === String(selectedUnitNum))?.topics) || []);
 
   // Current Active Conversation
   let activeChat = conversations.find((c) => c.id === activeChatId);
@@ -167,8 +313,8 @@ export default function AIAssistantView({
       id: createChatId(),
       title: 'New Discussion',
       subjectId: activeSubjectId,
-      subjectCode: currentSubject.code,
-      subjectTitle: currentSubject.title,
+      subjectCode: currentSubject?.code || 'ENG',
+      subjectTitle: currentSubject?.title || 'Engineering Course',
       mode: activeMode,
       createdAt: getTimestamp(),
       updatedAt: getTimestamp(),
@@ -269,8 +415,8 @@ export default function AIAssistantView({
       ...currentChat,
       title: newTitle,
       subjectId: activeSubjectId,
-      subjectCode: currentSubject.code,
-      subjectTitle: currentSubject.title,
+      subjectCode: currentSubject?.code || 'ENG',
+      subjectTitle: currentSubject?.title || 'Engineering Course',
       mode: activeMode,
       updatedAt: getTimestamp(),
       messages: newMessages
@@ -294,10 +440,10 @@ export default function AIAssistantView({
         body: JSON.stringify({
           messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
           subject: {
-            id: currentSubject.id,
-            title: currentSubject.title,
-            code: currentSubject.code,
-            shortName: currentSubject.shortName
+            id: currentSubject?.id || 'eng-core',
+            title: currentSubject?.title || 'Engineering Course',
+            code: currentSubject?.code || 'ENG',
+            shortName: currentSubject?.shortName || 'Engineering'
           },
           studentProfile: {
             branch: profile?.branch,
@@ -306,9 +452,12 @@ export default function AIAssistantView({
             degree: profile?.degree,
             year: profile?.year,
             semester: profile?.semester,
-            curriculum: profile?.curriculum
+            curriculum: profile?.curriculum,
+            activeSubjects: subjectList.map((s) => ({ id: s.id, code: s.code, title: s.title }))
           },
           mode: activeMode,
+          unitNumber: selectedUnitNum !== 'all' ? selectedUnitNum : null,
+          topic: selectedTopicId !== 'all' ? (availableTopics.find((t) => t.id === selectedTopicId)?.name || null) : null,
           quickAction: quickActionType
         })
       });
@@ -425,12 +574,30 @@ export default function AIAssistantView({
 
   // Quick Action Click
   const handleQuickAction = (qa) => {
+    let targetSubject = currentSubject;
     if (qa.id === 'python') {
-      // If Python quick action, auto-switch subject to Python if not already
-      setActiveSubjectId('cs103');
+      // Find the Python subject dynamically using its actual title or reliable metadata
+      const pySubject = subjectList.find((s) => {
+        const title = (s.title || '').toLowerCase();
+        const shortName = (s.shortName || '').toLowerCase();
+        return (
+          title.includes('python') ||
+          shortName.includes('python') ||
+          s.id === 'cs103' ||
+          s.id === 'ggu-aiml-103'
+        );
+      });
+
+      if (pySubject) {
+        setActiveSubjectId(pySubject.id);
+        targetSubject = pySubject;
+      } else {
+        onShowToast?.('No Python course found in your active semester curriculum. Asking general Python assistant.');
+        targetSubject = { title: 'Python Programming' };
+      }
     }
 
-    const starterPrompt = `${qa.promptPrefix} ${currentSubject.title}: `;
+    const starterPrompt = `${qa.promptPrefix} ${targetSubject?.title || 'Engineering Course'}: `;
     setInputMessage(starterPrompt);
     if (textareaRef.current) {
       textareaRef.current.focus();
@@ -442,7 +609,7 @@ export default function AIAssistantView({
     handleSendMessage(starter.prompt, starter.action);
   };
 
-  const starterPrompts = SUBJECT_STARTER_PROMPTS[activeSubjectId] || SUBJECT_STARTER_PROMPTS.math101;
+  const starterPrompts = resolveStarterPrompts(currentSubject);
 
   return (
     <div className="ai-assistant-container">
@@ -562,11 +729,11 @@ export default function AIAssistantView({
             <div className="ai-header-info">
               <div className="ai-header-title">
                 <IconSparkles size={18} style={{ color: 'var(--forest-800)' }} />
-                <span className="ai-header-title-full">StudyNest AI Academic Assistant</span>
+                <span className="ai-header-title-full">Sagevanta AI Academic Assistant</span>
                 <span className="ai-header-title-short">AI Tutor</span>
               </div>
               <div className="ai-header-subtitle">
-                24/7 Socratic engineering mentor tailored to your Semester 1 curriculum
+                24/7 Socratic engineering mentor tailored to your {profile?.semester || 'active'} curriculum
               </div>
             </div>
           </div>
@@ -607,14 +774,18 @@ export default function AIAssistantView({
           </div>
         </header>
 
-        {/* Controls Strip: Subject Dropdown & Explanation Mode Selector */}
-        <div className="ai-controls-strip">
+        {/* Controls Strip: Subject, Unit, Topic & Explanation Mode Selector */}
+        <div className="ai-controls-strip" style={{ flexWrap: 'wrap', gap: '10px' }}>
           <div className="ai-control-group">
             <span className="ai-control-label">Subject:</span>
             <select
               className="ai-subject-select"
-              value={activeSubjectId}
-              onChange={(e) => setActiveSubjectId(e.target.value)}
+              value={currentSubject?.id || activeSubjectId}
+              onChange={(e) => {
+                setActiveSubjectId(e.target.value);
+                setSelectedUnitNum('all');
+                setSelectedTopicId('all');
+              }}
             >
               {subjectList.map((sub) => (
                 <option key={sub.id} value={sub.id}>
@@ -625,7 +796,44 @@ export default function AIAssistantView({
           </div>
 
           <div className="ai-control-group">
-            <span className="ai-control-label">Explanation Level:</span>
+            <span className="ai-control-label">Unit:</span>
+            <select
+              className="ai-subject-select"
+              style={{ maxWidth: '170px' }}
+              value={selectedUnitNum}
+              onChange={(e) => {
+                setSelectedUnitNum(e.target.value);
+                setSelectedTopicId('all');
+              }}
+            >
+              <option value="all">All Units (Overview)</option>
+              {(currentSubject?.units || []).map((u) => (
+                <option key={u.unitNumber} value={u.unitNumber}>
+                  Unit {u.unitNumber}: {u.unitTitle?.replace(/^Unit\s*\d+:\s*/i, '').slice(0, 22)}...
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="ai-control-group">
+            <span className="ai-control-label">Topic:</span>
+            <select
+              className="ai-subject-select"
+              style={{ maxWidth: '190px' }}
+              value={selectedTopicId}
+              onChange={(e) => setSelectedTopicId(e.target.value)}
+            >
+              <option value="all">All Topics (General)</option>
+              {availableTopics.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="ai-control-group">
+            <span className="ai-control-label">Difficulty:</span>
             <div className="ai-mode-pills">
               {EXPLANATION_MODES.map((mode) => {
                 const isActive = activeMode === mode.id;

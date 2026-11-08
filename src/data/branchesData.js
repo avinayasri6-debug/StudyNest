@@ -137,6 +137,7 @@ export const ENGINEERING_BRANCHES = [
 export const STANDARD_DEGREES = [
   { id: 'btech', code: 'B.Tech', label: 'B.Tech — Bachelor of Technology' },
   { id: 'be', code: 'B.E.', label: 'B.E. — Bachelor of Engineering' },
+  { id: 'diploma', code: 'Diploma', label: 'Diploma in Engineering' },
   { id: 'mtech', code: 'M.Tech', label: 'M.Tech — Master of Technology' },
   { id: 'dual', code: 'Dual Degree', label: 'Dual Degree — B.Tech + M.Tech Integrated' },
   { id: 'bsc_eng', code: 'B.S. Eng', label: 'B.S. — Bachelor of Science in Engineering' }

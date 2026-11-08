@@ -37,6 +37,8 @@ export function StudyNestLogo({ size = 28, className = '' }) {
   );
 }
 
+export const SagevantaLogo = StudyNestLogo;
+
 export function IconDashboard({ size = 20, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -149,6 +151,14 @@ export function IconChevronRight({ size = 18, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
+export function IconChevronDown({ size = 16, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <polyline points="6 9 12 15 18 9" />
     </svg>
   );
 }
@@ -660,6 +670,16 @@ export function IconAlertTriangle({ size = 18, className = '' }) {
       <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
       <line x1="12" y1="9" x2="12" y2="13" />
       <line x1="12" y1="17" x2="12.01" y2="17" strokeWidth="2" />
+    </svg>
+  );
+}
+
+export function IconUpload({ size = 16, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   );
 }

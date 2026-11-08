@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import SubjectCard from '../components/SubjectCard';
 import AddSubjectModal from '../components/AddSubjectModal';
+import SyllabusUploadModal from '../components/SyllabusUploadModal';
 import VisualLearningJourney from '../components/VisualLearningJourney';
-import { IconBook, IconSparkles, IconPlus, IconCheckCircle } from '../components/Icons';
-import { SAMPLE_SYLLABUS_DISCLAIMER, getActiveCurriculumSubjects } from '../data/curriculumData';
+import { IconBook, IconSparkles, IconPlus, IconCheckCircle, IconUpload } from '../components/Icons';
+import { SAMPLE_SYLLABUS_DISCLAIMER, getActiveCurriculumSubjects, parseSemesterNumber } from '../data/curriculumData';
 import { ACADEMIC_SEMESTERS } from '../data/branchesData';
 
 export default function SubjectsView({
@@ -14,20 +15,31 @@ export default function SubjectsView({
   onShowToast,
   customSubjects = [],
   onAddCustomSubject,
+  onImportCurriculum,
   subjectOverrides = {},
-  onOpenPlayground
+  onOpenPlayground,
+  onUpdateSemester
 }) {
-  const profileSemNum = Number.parseInt((profile?.semester || 'Semester 1').replace(/\D/g, ''), 10) || 1;
+  const profileSemNum = parseSemesterNumber(profile?.semester);
   const [selectedSemester, setSelectedSemester] = useState(profileSemNum);
+  const [prevSemNum, setPrevSemNum] = useState(profileSemNum);
+
+  if (prevSemNum !== profileSemNum) {
+    setPrevSemNum(profileSemNum);
+    setSelectedSemester(profileSemNum);
+  }
   const [activeCategory, setActiveCategory] = useState('ALL');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
   const activeBranchId = profile?.branchId || 'cse';
   const branchName = profile?.branch || 'Computer Science and Engineering';
 
   // Get combined subjects for the selected semester & branch
   const subjects = getActiveCurriculumSubjects({
+    profile,
     branchId: activeBranchId,
+    branch: branchName,
     semester: selectedSemester,
     customSubjects,
     subjectOverrides
@@ -78,7 +90,7 @@ export default function SubjectsView({
         </div>
 
         {/* Actions Button Row */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           {onOpenPlayground && (
             <button
               type="button"
@@ -100,11 +112,28 @@ export default function SubjectsView({
 
           <button
             type="button"
+            className="editor-btn-secondary"
+            onClick={() => setIsUploadModalOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 600,
+              backgroundColor: 'var(--bg-card-warm)',
+              color: 'var(--forest-900)'
+            }}
+          >
+            <IconUpload size={15} />
+            <span>Upload Syllabus (PDF)</span>
+          </button>
+
+          <button
+            type="button"
             className="add-task-btn"
             onClick={() => setIsAddModalOpen(true)}
           >
             <IconPlus size={16} />
-            <span>Add Custom Subject</span>
+            <span>Add Course</span>
           </button>
         </div>
       </div>
@@ -135,7 +164,10 @@ export default function SubjectsView({
               key={sem.id}
               type="button"
               className={`modal-tab-btn ${isSelected ? 'active' : ''}`}
-              onClick={() => setSelectedSemester(sem.id)}
+              onClick={() => {
+                setSelectedSemester(sem.id);
+                onUpdateSemester?.(sem.label);
+              }}
               style={{
                 position: 'relative',
                 whiteSpace: 'nowrap',
@@ -184,15 +216,39 @@ export default function SubjectsView({
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <IconSparkles size={16} style={{ flexShrink: 0 }} />
           <span>
-            <strong>Semester {selectedSemester} Curriculum: </strong>
-            Showing {subjects.length} courses enrolled for {branchName}. {SAMPLE_SYLLABUS_DISCLAIMER}
+            {subjects.some((s) => s.source === 'sample_template') ? (
+              <>
+                <strong>Sample Curriculum: </strong>
+                Godavari Global University · CSE-AIML Template (Semester 1) — Not default for all students. {SAMPLE_SYLLABUS_DISCLAIMER}
+              </>
+            ) : subjects.length > 0 ? (
+              <>
+                <strong>Semester {selectedSemester} Curriculum: </strong>
+                Showing {subjects.length} courses enrolled for {branchName}. All items verified by student.
+              </>
+            ) : (
+              <>
+                <strong>Semester {selectedSemester}: </strong>
+                No courses registered yet. Never silently invent missing courses. Upload your official university syllabus PDF or add courses manually.
+              </>
+            )}
           </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600 }}>
-          <span style={{ color: 'var(--forest-800)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <IconCheckCircle size={13} /> Verified Core Syllabus
-          </span>
+          {subjects.some((s) => s.source === 'sample_template') ? (
+            <span style={{ color: 'var(--forest-800)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <IconCheckCircle size={13} /> Sample GGU Template
+            </span>
+          ) : subjects.length > 0 ? (
+            <span style={{ color: 'var(--forest-800)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <IconCheckCircle size={13} /> Student Curriculum
+            </span>
+          ) : (
+            <span style={{ color: 'var(--text-muted)' }}>
+              Awaiting Syllabus Upload
+            </span>
+          )}
         </div>
       </div>
 
@@ -232,19 +288,31 @@ export default function SubjectsView({
         }}>
           <IconBook size={36} style={{ color: 'var(--forest-700)', margin: '0 auto 12px' }} />
           <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--forest-950)', margin: '0 0 6px' }}>
-            No Courses Found for Semester {selectedSemester}
+            No Courses Configured for Semester {selectedSemester}
           </h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '440px', margin: '0 auto 18px' }}>
-            You haven't added any courses to Semester {selectedSemester} yet. Click below to add a subject according to your college syllabus.
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '480px', margin: '0 auto 20px', lineHeight: 1.5 }}>
+            Sagevanta does not invent artificial subjects for your semester. Upload your university syllabus in PDF format to automatically extract your real courses, or add them manually.
           </p>
-          <button
-            type="button"
-            className="add-task-btn"
-            onClick={() => setIsAddModalOpen(true)}
-          >
-            <IconPlus size={16} />
-            <span>Add Course to Semester {selectedSemester}</span>
-          </button>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="add-task-btn"
+              onClick={() => setIsUploadModalOpen(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <IconUpload size={16} />
+              <span>Upload University Syllabus (PDF)</span>
+            </button>
+            <button
+              type="button"
+              className="sem2-action-btn"
+              onClick={() => setIsAddModalOpen(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <IconPlus size={15} />
+              <span>Add Course Manually</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -255,6 +323,16 @@ export default function SubjectsView({
         onAddSubject={onAddCustomSubject}
         activeSemester={selectedSemester}
         activeBranch={branchName}
+        onShowToast={onShowToast}
+      />
+
+      {/* Syllabus Upload Modal */}
+      <SyllabusUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        activeSemester={selectedSemester}
+        activeBranch={branchName}
+        onSaveCurriculum={onImportCurriculum}
         onShowToast={onShowToast}
       />
     </div>

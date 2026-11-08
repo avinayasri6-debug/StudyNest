@@ -19,7 +19,7 @@ import {
   IconSliders,
   IconRefreshCw
 } from '../components/Icons';
-import { SEMESTER_1_SUBJECTS } from '../data/subjectsData';
+import { getActiveCurriculumSubjects, parseSemesterNumber } from '../data/curriculumData';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import './StudyPlannerView.css';
 
@@ -127,11 +127,26 @@ export default function StudyPlannerView({
   onSaveUpcomingExams,
   completedTopics = {},
   onNavigate,
-  onShowToast
+  onShowToast,
+  customSubjects = [],
+  subjectOverrides = {}
 }) {
+  const semNum = parseSemesterNumber(profile?.semester);
+  const activeSubjects = useMemo(() => {
+    return getActiveCurriculumSubjects({
+      profile,
+      branchId: profile?.branchId || 'cse',
+      semester: semNum,
+      customSubjects,
+      subjectOverrides
+    });
+  }, [profile, semNum, customSubjects, subjectOverrides]);
   // Navigation tabs:
   // 'daily' | 'weekly' | 'tasks' | 'exams' | 'goals' | 'pomodoro' | 'suggestions'
   const [activeTab, setActiveTab] = useState('daily');
+
+  const defaultSubId = activeSubjects[0]?.id || '';
+  const defaultSubCode = activeSubjects[0]?.code || '';
 
   // ==========================================
   // FEATURE 1: DAILY PLANNER STATE
@@ -140,7 +155,7 @@ export default function StudyPlannerView({
   const [isAddingSession, setIsAddingSession] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState(null);
   const [sessionForm, setSessionForm] = useState(() => ({
-    subjectId: 'math101',
+    subjectId: defaultSubId,
     topic: '',
     startTime: '09:30',
     endTime: '11:00',
@@ -167,7 +182,7 @@ export default function StudyPlannerView({
   const [taskForm, setTaskForm] = useState(() => ({
     title: '',
     description: '',
-    subjectCode: 'MATH 101',
+    subjectCode: defaultSubCode,
     type: 'study',
     dueDate: getTodayDateStr(),
     dueTime: '18:00',
@@ -181,7 +196,7 @@ export default function StudyPlannerView({
   const [isAddingExam, setIsAddingExam] = useState(false);
   const [editingExamId, setEditingExamId] = useState(null);
   const [examForm, setExamForm] = useState(() => ({
-    subjectId: 'math101',
+    subjectId: defaultSubId,
     examType: 'Mid-Semester Theory Examination',
     date: getTodayDateStr(),
     time: '09:30 AM',
@@ -208,10 +223,27 @@ export default function StudyPlannerView({
   const [timerMinutes, setTimerMinutes] = useState(25);
   const [secondsRemaining, setSecondsRemaining] = useState(25 * 60);
   const [timerStatus, setTimerStatus] = useState('idle'); // 'idle' | 'running' | 'paused'
-  const [timerSubjectCode, setTimerSubjectCode] = useState('CSE 101');
-  const [timerTopic, setTimerTopic] = useState('Python Academy Focus Sprint');
+  const [timerSubjectCode, setTimerSubjectCode] = useState(() => defaultSubCode);
+  const [timerTopic, setTimerTopic] = useState(() => activeSubjects[0] ? `${activeSubjects[0].shortName || activeSubjects[0].title} Focus Sprint` : 'Academic Study Sprint');
   const [customMinutesInput, setCustomMinutesInput] = useState(30);
   const timerIntervalRef = useRef(null);
+
+  // Derived effective subject IDs and codes (guarantees a valid active subject is always used)
+  const effectiveSessionSubId = activeSubjects.some((s) => s.id === sessionForm.subjectId)
+    ? sessionForm.subjectId
+    : defaultSubId;
+
+  const effectiveTaskSubCode = activeSubjects.some((s) => s.code === taskForm.subjectCode)
+    ? taskForm.subjectCode
+    : defaultSubCode;
+
+  const effectiveExamSubId = activeSubjects.some((s) => s.id === examForm.subjectId)
+    ? examForm.subjectId
+    : defaultSubId;
+
+  const effectiveTimerSubCode = activeSubjects.some((s) => s.code === timerSubjectCode)
+    ? timerSubjectCode
+    : defaultSubCode;
 
   // Focus timer countdown effect
   useEffect(() => {
@@ -230,12 +262,12 @@ export default function StudyPlannerView({
                 id: `session-${Date.now()}`,
                 date: getTodayDateStr(),
                 minutes: minutesLogged,
-                subject: timerSubjectCode,
+                subject: effectiveTimerSubCode,
                 topic: timerTopic,
                 type: 'pomodoro',
                 timestamp: Date.now()
               });
-              onShowToast?.(`🎉 Great focus! Completed ${minutesLogged} mins of study for ${timerSubjectCode}. Logged to your progress.`);
+              onShowToast?.(`🎉 Great focus! Completed ${minutesLogged} mins of study for ${effectiveTimerSubCode}. Logged to your progress.`);
             } else {
               onShowToast?.('🔔 Break finished! Ready to refocus on your engineering studies.');
             }
@@ -251,7 +283,7 @@ export default function StudyPlannerView({
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
-  }, [timerStatus, timerMinutes, timerMode, timerSubjectCode, timerTopic, onLogStudySession, onShowToast]);
+  }, [timerStatus, timerMinutes, timerMode, effectiveTimerSubCode, timerTopic, onLogStudySession, onShowToast]);
 
   const handleSelectTimerMode = (mode, defaultMins) => {
     setTimerStatus('idle');
@@ -289,12 +321,12 @@ export default function StudyPlannerView({
       id: `session-${Date.now()}`,
       date: getTodayDateStr(),
       minutes: elapsedMins,
-      subject: timerSubjectCode,
+      subject: effectiveTimerSubCode,
       topic: timerTopic,
       type: 'pomodoro',
       timestamp: Date.now()
     });
-    onShowToast?.(`Logged ${elapsedMins} mins of study for ${timerSubjectCode}!`);
+    onShowToast?.(`Logged ${elapsedMins} mins of study for ${effectiveTimerSubCode}!`);
     handleResetTimer();
   };
 
@@ -363,14 +395,18 @@ export default function StudyPlannerView({
       .filter((a) => a.status !== 'Submitted')
       .slice(0, 3)
       .forEach((a) => {
+        const matchedSub = activeSubjects.find((s) => s.id === a.subjectId || s.code === a.subjectCode);
+        const resolvedTitle = matchedSub?.title || a.subjectTitle || a.subjectName || (a.subjectId ? `Course ${a.subjectId}` : 'Course Assignment');
+        const resolvedCode = matchedSub?.code || a.subjectCode || 'ASG';
+
         recs.push({
           id: `rec-asg-${a.id}`,
           type: 'assignment',
           priorityScore: 60,
           badge: 'ASSIGNMENT DUE',
           reasonClass: 'reason-urgent',
-          subjectCode: a.subjectCode || a.subjectId,
-          subjectName: a.subjectId,
+          subjectCode: resolvedCode,
+          subjectName: resolvedTitle,
           title: a.title,
           description: `Due date: ${a.dueDate}. Submit your report and verify solution steps.`,
           recommendedDuration: 60
@@ -378,7 +414,7 @@ export default function StudyPlannerView({
       });
 
     // 4. Check lowest progress subject
-    SEMESTER_1_SUBJECTS.forEach((sub) => {
+    activeSubjects.forEach((sub) => {
       const completedCount = (completedTopics[sub.id] || []).length;
       if (completedCount === 0) {
         recs.push({
@@ -398,7 +434,7 @@ export default function StudyPlannerView({
 
     // Sort by priorityScore descending
     return recs.sort((a, b) => b.priorityScore - a.priorityScore).slice(0, 6);
-  }, [upcomingExams, tasks, assignments, completedTopics]);
+  }, [upcomingExams, tasks, assignments, completedTopics, activeSubjects]);
 
   // AI Plan Advisor request
   const handleAskAIAdvisor = async () => {
@@ -533,7 +569,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
         const nextState = !s.completed;
         // If marking complete, also log session minutes to studySessions
         if (nextState) {
-          const matchedSub = SEMESTER_1_SUBJECTS.find((sub) => sub.id === s.subjectId);
+          const matchedSub = activeSubjects.find((sub) => sub.id === s.subjectId);
           onLogStudySession?.({
             id: `session-planned-${Date.now()}`,
             date: s.date,
@@ -564,14 +600,14 @@ Keep it encouraging, structured with bullet points and bold headers.`
     e.preventDefault();
     if (!sessionForm.topic.trim()) return;
 
-    const matchedSub = SEMESTER_1_SUBJECTS.find((s) => s.id === sessionForm.subjectId);
+    const matchedSub = activeSubjects.find((s) => s.id === effectiveSessionSubId);
 
     if (editingSessionId) {
       const updated = plannedSessions.map((s) => {
         if (s.id === editingSessionId) {
           return {
             ...s,
-            subjectId: sessionForm.subjectId,
+            subjectId: effectiveSessionSubId,
             subjectCode: matchedSub?.code || 'GEN',
             subjectName: matchedSub?.title || 'General Engineering',
             topic: sessionForm.topic.trim(),
@@ -590,7 +626,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
       const newSession = {
         id: `plan-${Date.now()}`,
         date: dailySelectedDate,
-        subjectId: sessionForm.subjectId,
+        subjectId: effectiveSessionSubId,
         subjectCode: matchedSub?.code || 'GEN',
         subjectName: matchedSub?.title || 'General Engineering',
         topic: sessionForm.topic.trim(),
@@ -605,7 +641,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
     }
 
     setSessionForm({
-      subjectId: 'math101',
+      subjectId: activeSubjects[0]?.id || '',
       topic: '',
       startTime: '09:30',
       endTime: '11:00',
@@ -618,7 +654,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
   const handleStartEditSession = (session) => {
     setEditingSessionId(session.id);
     setSessionForm({
-      subjectId: session.subjectId || 'math101',
+      subjectId: session.subjectId || activeSubjects[0]?.id || '',
       topic: session.topic || '',
       startTime: session.startTime || '09:30',
       endTime: session.endTime || '11:00',
@@ -701,7 +737,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
     e.preventDefault();
     if (!taskForm.title.trim()) return;
 
-    const matchedSub = SEMESTER_1_SUBJECTS.find((s) => s.code === taskForm.subjectCode);
+    const matchedSub = activeSubjects.find((s) => s.code === effectiveTaskSubCode);
     const subjectName = matchedSub ? matchedSub.title : 'General Study';
 
     if (editingTaskId) {
@@ -712,7 +748,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
             title: taskForm.title.trim(),
             description: taskForm.description.trim(),
             subject: subjectName,
-            subjectTag: taskForm.subjectCode,
+            subjectTag: effectiveTaskSubCode,
             type: taskForm.type,
             dueDate: taskForm.dueDate,
             dueTime: taskForm.dueTime,
@@ -732,7 +768,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
         title: taskForm.title.trim(),
         description: taskForm.description.trim(),
         subject: subjectName,
-        subjectTag: taskForm.subjectCode,
+        subjectTag: effectiveTaskSubCode,
         type: taskForm.type,
         dueDate: taskForm.dueDate,
         dueTime: taskForm.dueTime,
@@ -747,7 +783,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
     setTaskForm({
       title: '',
       description: '',
-      subjectCode: 'MATH 101',
+      subjectCode: activeSubjects[0]?.code || '',
       type: 'study',
       dueDate: getTodayDateStr(),
       dueTime: '18:00',
@@ -762,7 +798,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
     setTaskForm({
       title: t.title || '',
       description: t.description || '',
-      subjectCode: t.subjectTag || 'MATH 101',
+      subjectCode: t.subjectTag || activeSubjects[0]?.code || '',
       type: t.type || 'study',
       dueDate: t.dueDate || getTodayDateStr(),
       dueTime: t.dueTime || '18:00',
@@ -781,14 +817,14 @@ Keep it encouraging, structured with bullet points and bold headers.`
 
   const handleSaveExamForm = (e) => {
     e.preventDefault();
-    const matchedSub = SEMESTER_1_SUBJECTS.find((s) => s.id === examForm.subjectId);
+    const matchedSub = activeSubjects.find((s) => s.id === effectiveExamSubId);
 
     if (editingExamId) {
       const updated = upcomingExams.map((ex) => {
         if (ex.id === editingExamId) {
           return {
             ...ex,
-            subjectId: examForm.subjectId,
+            subjectId: effectiveExamSubId,
             subjectCode: matchedSub?.code || 'GEN',
             subjectName: matchedSub?.title || 'Course Exam',
             examType: examForm.examType.trim(),
@@ -807,7 +843,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
     } else {
       const newExam = {
         id: `exam-${Date.now()}`,
-        subjectId: examForm.subjectId,
+        subjectId: effectiveExamSubId,
         subjectCode: matchedSub?.code || 'GEN',
         subjectName: matchedSub?.title || 'Course Exam',
         examType: examForm.examType.trim(),
@@ -822,7 +858,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
     }
 
     setExamForm({
-      subjectId: 'math101',
+      subjectId: activeSubjects[0]?.id || '',
       examType: 'Mid-Semester Theory Examination',
       date: getTodayDateStr(),
       time: '09:30 AM',
@@ -842,7 +878,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
   const handleStartEditExam = (exam) => {
     setEditingExamId(exam.id);
     setExamForm({
-      subjectId: exam.subjectId || 'math101',
+      subjectId: exam.subjectId || activeSubjects[0]?.id || '',
       examType: exam.examType || 'Mid-Semester Theory Examination',
       date: exam.date || getTodayDateStr(),
       time: exam.time || '09:30 AM',
@@ -1147,12 +1183,12 @@ Keep it encouraging, structured with bullet points and bold headers.`
                   </label>
                   <select
                     className="add-task-input"
-                    value={sessionForm.subjectId}
+                    value={effectiveSessionSubId}
                     onChange={(e) => setSessionForm({ ...sessionForm, subjectId: e.target.value })}
                   >
-                    {SEMESTER_1_SUBJECTS.map((s) => (
+                    {activeSubjects.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.code} - {s.shortName}
+                        {s.code} - {s.shortName || s.title}
                       </option>
                     ))}
                   </select>
@@ -1558,9 +1594,9 @@ Keep it encouraging, structured with bullet points and bold headers.`
               onChange={(e) => setFilterSubject(e.target.value)}
             >
               <option value="ALL">All Subjects</option>
-              {SEMESTER_1_SUBJECTS.map((s) => (
+              {activeSubjects.map((s) => (
                 <option key={s.id} value={s.code}>
-                  {s.code} - {s.shortName}
+                  {s.code} - {s.shortName || s.title}
                 </option>
               ))}
             </select>
@@ -1657,12 +1693,12 @@ Keep it encouraging, structured with bullet points and bold headers.`
                   </label>
                   <select
                     className="add-task-input"
-                    value={taskForm.subjectCode}
+                    value={effectiveTaskSubCode}
                     onChange={(e) => setTaskForm({ ...taskForm, subjectCode: e.target.value })}
                   >
-                    {SEMESTER_1_SUBJECTS.map((s) => (
+                    {activeSubjects.map((s) => (
                       <option key={s.id} value={s.code}>
-                        {s.code} - {s.shortName}
+                        {s.code} - {s.shortName || s.title}
                       </option>
                     ))}
                   </select>
@@ -1942,12 +1978,12 @@ Keep it encouraging, structured with bullet points and bold headers.`
                   </label>
                   <select
                     className="add-task-input"
-                    value={examForm.subjectId}
+                    value={effectiveExamSubId}
                     onChange={(e) => setExamForm({ ...examForm, subjectId: e.target.value })}
                   >
-                    {SEMESTER_1_SUBJECTS.map((s) => (
+                    {activeSubjects.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.code} - {s.shortName}
+                        {s.code} - {s.shortName || s.title}
                       </option>
                     ))}
                   </select>
@@ -2454,13 +2490,13 @@ Keep it encouraging, structured with bullet points and bold headers.`
               </label>
               <select
                 className="add-task-input"
-                value={timerSubjectCode}
+                value={effectiveTimerSubCode}
                 onChange={(e) => setTimerSubjectCode(e.target.value)}
                 disabled={timerStatus === 'running'}
               >
-                {SEMESTER_1_SUBJECTS.map((s) => (
+                {activeSubjects.map((s) => (
                   <option key={s.id} value={s.code}>
-                    {s.code} - {s.shortName}
+                    {s.code} - {s.shortName || s.title}
                   </option>
                 ))}
               </select>
@@ -2602,7 +2638,7 @@ Keep it encouraging, structured with bullet points and bold headers.`
                       onClick={() => {
                         setDailySelectedDate(todayStr);
                         setSessionForm({
-                          subjectId: SEMESTER_1_SUBJECTS.find((s) => s.code === rec.subjectCode)?.id || 'math101',
+                          subjectId: activeSubjects.find((s) => s.code === rec.subjectCode)?.id || activeSubjects[0]?.id || '',
                           topic: rec.title,
                           startTime: '10:00',
                           endTime: '11:30',

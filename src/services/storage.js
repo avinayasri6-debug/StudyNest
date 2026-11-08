@@ -1,7 +1,7 @@
 // Central LocalStorage Management for StudyNest
-import { INITIAL_TASKS } from '../data/tasksData';
-import { DEFAULT_VIDEO_PLAYLISTS } from '../data/videosData';
-import { getBranchByName } from '../data/branchesData';
+import { INITIAL_TASKS } from '../data/tasksData.js';
+import { DEFAULT_VIDEO_PLAYLISTS } from '../data/videosData.js';
+import { getBranchByName } from '../data/branchesData.js';
 
 const STORAGE_KEYS = {
   PROFILE: 'studynest_profile_v2',
@@ -47,8 +47,10 @@ export const DEFAULT_PROFILE = {
   branchId: 'cse',
   year: 'First Year',
   semester: 'Semester 1',
+  admissionBatch: '2024 - 2028',
   curriculum: 'AICTE 2024 Model Curriculum',
   profilePic: null,
+  onboardingCompleted: false,
   studyGoals: {
     weeklyHoursTarget: 20,
     dailyTargetHours: 3.5,
@@ -64,12 +66,27 @@ export function getProfile() {
     if (!raw) return DEFAULT_PROFILE;
     const parsed = JSON.parse(raw);
     const branchInfo = getBranchByName(parsed.branch);
+
+    // Backward-compatible onboarding detection:
+    // If onboardingCompleted is explicitly set (true or false), honor it.
+    // Otherwise, if the student already has custom profile data (e.g. customized name,
+    // college, or activity), treat them as having completed onboarding so we never disturb existing students.
+    let onboardingCompleted = parsed.onboardingCompleted;
+    if (typeof onboardingCompleted !== 'boolean') {
+      const hasCustomizedName = parsed.name && parsed.name !== 'Engineering Student';
+      const hasCustomizedCollege = parsed.college && parsed.college !== 'Engineering Institute of Technology';
+      const hasSavedProgress = localStorage.getItem(STORAGE_KEYS.SUBJECT_PROGRESS) || localStorage.getItem(STORAGE_KEYS.TASKS);
+      onboardingCompleted = Boolean(hasCustomizedName || hasCustomizedCollege || hasSavedProgress);
+    }
+
     return {
       ...DEFAULT_PROFILE,
       ...parsed,
       branchId: parsed.branchId || branchInfo?.id || 'cse',
       degree: parsed.degree || DEFAULT_PROFILE.degree,
-      curriculum: parsed.curriculum || DEFAULT_PROFILE.curriculum
+      admissionBatch: parsed.admissionBatch || DEFAULT_PROFILE.admissionBatch,
+      curriculum: parsed.curriculum || DEFAULT_PROFILE.curriculum,
+      onboardingCompleted
     };
   } catch (e) {
     console.error('Error reading profile from localStorage:', e);

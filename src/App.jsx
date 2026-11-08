@@ -4,6 +4,7 @@ import TopNav from './components/TopNav';
 import BottomNav from './components/BottomNav';
 import SubjectModal from './components/SubjectModal';
 import StudentProfileModal from './components/StudentProfileModal';
+import AcademicOnboardingModal from './components/AcademicOnboardingModal';
 import EngineeringPlayground from './components/EngineeringPlayground';
 import Toast from './components/Toast';
 
@@ -75,6 +76,10 @@ export default function App() {
   // PERSISTENT DATA STATES
   // ==========================================
   const [profile, setProfileState] = useState(() => getProfile());
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
+    const p = getProfile();
+    return !p.onboardingCompleted;
+  });
   const [completedTopics, setCompletedTopicsState] = useState(() => getCompletedTopics());
   const [completedModuleIds, setCompletedModuleIdsState] = useState(() => getPythonCompletedLessons());
   const [tasks, setTasksState] = useState(() => getTasks());
@@ -158,6 +163,34 @@ export default function App() {
   const handleUpdateProfile = (newProfile) => {
     setProfileState(newProfile);
     saveProfile(newProfile);
+  };
+
+  const handleUpdateSemester = (newSemLabel) => {
+    const semNum = Number.parseInt(String(newSemLabel).replace(/\D/g, ''), 10) || 1;
+    let autoYear = 'First Year';
+    if (semNum >= 3 && semNum <= 4) autoYear = 'Second Year';
+    else if (semNum >= 5 && semNum <= 6) autoYear = 'Third Year';
+    else if (semNum >= 7 && semNum <= 8) autoYear = 'Final Year';
+
+    const updatedProfile = {
+      ...profile,
+      semester: newSemLabel,
+      year: autoYear
+    };
+    setProfileState(updatedProfile);
+    saveProfile(updatedProfile);
+    showToast(`Active term switched to ${newSemLabel} (${autoYear})`);
+  };
+
+  const handleCompleteOnboarding = ({ profile: newProfile, curriculumChoice }) => {
+    setProfileState(newProfile);
+    saveProfile(newProfile);
+    setIsOnboardingOpen(false);
+
+    if (curriculumChoice === 'upload_pdf') {
+      setActiveView('subjects');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleToggleTopic = (topicId) => {
@@ -279,6 +312,30 @@ export default function App() {
     saveCustomSubjects(updated);
   };
 
+  const handleImportCurriculum = ({ metadata = {}, subjects: newSubs = [] }) => {
+    // Prevent duplicate subjects by checking code and semester
+    const existingKeys = new Set(
+      customSubjects.map((s) => `${s.semester}_${(s.code || '').toUpperCase().trim()}`)
+    );
+    const nonDuplicates = newSubs.filter(
+      (s) => !existingKeys.has(`${s.semester}_${(s.code || '').toUpperCase().trim()}`)
+    );
+    const updated = [...nonDuplicates, ...customSubjects];
+    setCustomSubjectsState(updated);
+    saveCustomSubjects(updated);
+
+    if (metadata.university || metadata.degree || metadata.regulation) {
+      const updatedProfile = {
+        ...profile,
+        ...(metadata.university ? { college: metadata.university } : {}),
+        ...(metadata.degree ? { degree: metadata.degree } : {}),
+        ...(metadata.regulation ? { curriculum: metadata.regulation } : {})
+      };
+      setProfileState(updatedProfile);
+      saveProfile(updatedProfile);
+    }
+  };
+
   const handleUpdateSubject = (subjectId, updates) => {
     const isCustom = customSubjects.some((cs) => cs.id === subjectId);
     if (isCustom) {
@@ -343,6 +400,9 @@ export default function App() {
           assignments={assignments}
           onNavigateToResult={handleNavigateToResult}
           onShowToast={showToast}
+          onUpdateSemester={handleUpdateSemester}
+          customSubjects={customSubjects}
+          subjectOverrides={subjectOverrides}
         />
 
         {/* Scrollable Page Container */}
@@ -367,6 +427,8 @@ export default function App() {
               searchTerm={searchTerm}
               onShowToast={showToast}
               onOpenPlayground={() => setIsPlaygroundOpen(true)}
+              customSubjects={customSubjects}
+              subjectOverrides={subjectOverrides}
             />
           )}
 
@@ -381,6 +443,8 @@ export default function App() {
                 const updatedNotes = [note, ...notes];
                 handleSaveNotes(updatedNotes);
               }}
+              customSubjects={customSubjects}
+              subjectOverrides={subjectOverrides}
             />
           )}
 
@@ -393,8 +457,10 @@ export default function App() {
               onShowToast={showToast}
               customSubjects={customSubjects}
               onAddCustomSubject={handleAddCustomSubject}
+              onImportCurriculum={handleImportCurriculum}
               subjectOverrides={subjectOverrides}
               onOpenPlayground={() => setIsPlaygroundOpen(true)}
+              onUpdateSemester={handleUpdateSemester}
             />
           )}
 
@@ -423,6 +489,8 @@ export default function App() {
               profile={profile}
               onNavigate={handleNavigate}
               onShowToast={showToast}
+              customSubjects={customSubjects}
+              subjectOverrides={subjectOverrides}
             />
           )}
 
@@ -434,6 +502,8 @@ export default function App() {
               onShowToast={showToast}
               onNavigateToPython={() => handleNavigate('python')}
               onNavigate={handleNavigate}
+              customSubjects={customSubjects}
+              subjectOverrides={subjectOverrides}
             />
           )}
 
@@ -453,6 +523,8 @@ export default function App() {
               completedTopics={completedTopics}
               onNavigate={handleNavigate}
               onShowToast={showToast}
+              customSubjects={customSubjects}
+              subjectOverrides={subjectOverrides}
             />
           )}
         </main>
@@ -487,6 +559,18 @@ export default function App() {
           onUpdateSubject={handleUpdateSubject}
         />
       )}
+
+      {/* First-Time Academic Onboarding Modal */}
+      <AcademicOnboardingModal
+        isOpen={isOnboardingOpen}
+        initialProfile={profile}
+        onComplete={handleCompleteOnboarding}
+        onOpenSyllabusUpload={() => {
+          setActiveView('subjects');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onShowToast={showToast}
+      />
 
       {/* Editable Student Profile Modal */}
       {isProfileOpen && (

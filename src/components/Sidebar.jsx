@@ -58,7 +58,7 @@ export default function Sidebar({
           <div className="brand-link" style={{ cursor: 'pointer' }} onClick={() => handleItemClick('dashboard')}>
             <StudyNestLogo size={32} />
             <div>
-              <div className="brand-title">StudyNest</div>
+              <div className="brand-title">Sagevanta</div>
               <div className="brand-tagline">Engineering Workspace</div>
             </div>
           </div>

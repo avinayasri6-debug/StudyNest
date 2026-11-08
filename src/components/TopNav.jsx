@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   IconMenu,
   IconSearch,
@@ -9,9 +9,11 @@ import {
   IconCalendar,
   IconCheckCircle,
   IconAward,
-  IconSparkles
+  IconSparkles,
+  IconChevronDown
 } from './Icons';
-import { SEMESTER_1_SUBJECTS, getAllSubjectTopics } from '../data/subjectsData';
+import { getActiveCurriculumSubjects, getAllSubjectTopics, parseSemesterNumber } from '../data/curriculumData';
+import { ACADEMIC_YEARS } from '../data/branchesData';
 import { PYTHON_MODULES } from '../data/pythonCurriculum';
 import { PRACTICE_EXERCISES } from '../data/practiceExercises';
 import { VIDEO_LESSONS } from '../data/videosData';
@@ -23,10 +25,15 @@ export default function TopNav({
   searchTerm,
   onSearchChange,
   assignments = [],
-  onNavigateToResult
+  onNavigateToResult,
+  onUpdateSemester,
+  customSubjects = [],
+  subjectOverrides = {}
 }) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSemesterMenuOpen, setIsSemesterMenuOpen] = useState(false);
   const searchWrapRef = useRef(null);
+  const semesterMenuRef = useRef(null);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -34,12 +41,27 @@ export default function TopNav({
       if (searchWrapRef.current && !searchWrapRef.current.contains(event.target)) {
         setIsSearchOpen(false);
       }
+      if (semesterMenuRef.current && !semesterMenuRef.current.contains(event.target)) {
+        setIsSemesterMenuOpen(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const query = searchTerm.trim().toLowerCase();
+
+  // Dynamically resolve active subjects matching student's branch & semester
+  const semNum = parseSemesterNumber(profile?.semester);
+  const activeSubjects = useMemo(() => {
+    return getActiveCurriculumSubjects({
+      profile,
+      branchId: profile?.branchId || 'cse',
+      semester: semNum,
+      customSubjects,
+      subjectOverrides
+    });
+  }, [profile, semNum, customSubjects, subjectOverrides]);
 
   // Search results compilation matching primary sections
   const searchResults = {
@@ -52,9 +74,9 @@ export default function TopNav({
   };
 
   if (query.length >= 2) {
-    // 1. Courses (Subjects)
-    SEMESTER_1_SUBJECTS.forEach((s) => {
-      if (s.title.toLowerCase().includes(query) || s.code.toLowerCase().includes(query) || s.shortName.toLowerCase().includes(query)) {
+    // 1. Courses (Subjects) from active curriculum
+    activeSubjects.forEach((s) => {
+      if (s.title.toLowerCase().includes(query) || s.code.toLowerCase().includes(query) || (s.shortName && s.shortName.toLowerCase().includes(query))) {
         searchResults.subjects.push(s);
       }
       // 2. Syllabus Topics
@@ -72,7 +94,7 @@ export default function TopNav({
       ) {
         searchResults.exams.push({
           id: `exam-${s.id}`,
-          title: `${s.shortName} Mock Exam & Practice Paper`,
+          title: `${s.shortName || s.title} Mock Exam & Practice Paper`,
           subject: s
         });
       }
@@ -461,10 +483,112 @@ export default function TopNav({
       </div>
 
       <div className="nav-right-section">
-        {/* Semester indicator */}
-        <div className="term-pill-badge" title="Active Academic Session">
-          <span className="term-pill-dot" />
-          <span>{profile?.semester || 'Semester 1'}</span>
+        {/* Interactive Semester Quick Switcher */}
+        <div style={{ position: 'relative' }} ref={semesterMenuRef}>
+          <button
+            type="button"
+            className="term-pill-badge"
+            style={{
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              border: isSemesterMenuOpen ? '1px solid var(--forest-800)' : '1px solid var(--border-sage)',
+              backgroundColor: isSemesterMenuOpen ? 'rgba(104, 143, 120, 0.2)' : 'rgba(104, 143, 120, 0.12)',
+              outline: 'none',
+              padding: '5px 12px',
+              borderRadius: 'var(--radius-full)'
+            }}
+            onClick={() => setIsSemesterMenuOpen((prev) => !prev)}
+            title="Switch Academic Semester"
+            aria-expanded={isSemesterMenuOpen}
+            aria-haspopup="true"
+          >
+            <span className="term-pill-dot" />
+            <span style={{ fontWeight: 700, fontSize: '12px', color: 'var(--forest-950)' }}>
+              {profile?.semester || 'Semester 1'}
+            </span>
+            <IconChevronDown
+              size={13}
+              style={{
+                color: 'var(--forest-850)',
+                transform: isSemesterMenuOpen ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.2s ease'
+              }}
+            />
+          </button>
+
+          {/* Semester Selector Dropdown */}
+          {isSemesterMenuOpen && (
+            <div
+              className="semester-switcher-dropdown"
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                right: 0,
+                width: '300px',
+                backgroundColor: '#FFFFFF',
+                borderRadius: 'var(--radius-md, 12px)',
+                boxShadow: 'var(--shadow-elevation, 0 16px 36px rgba(28, 56, 41, 0.16))',
+                border: '1px solid var(--border-card, #E3DDCF)',
+                padding: '12px',
+                zIndex: 130,
+                animation: 'fadeInUp 0.18s ease-out'
+              }}
+            >
+              <div style={{ paddingBottom: '8px', marginBottom: '8px', borderBottom: '1px solid var(--border-subtle, #EFECE4)' }}>
+                <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--forest-800)', letterSpacing: '0.05em' }}>
+                  Academic Term Switcher
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  {profile?.branch || 'Engineering'} · {profile?.year || 'First Year'}
+                </div>
+              </div>
+
+              {/* Grouped by Academic Year */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {ACADEMIC_YEARS.map((yearGroup) => (
+                  <div key={yearGroup.id}>
+                    <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                      {yearGroup.label}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                      {yearGroup.semesters.map((sNum) => {
+                        const sLabel = `Semester ${sNum}`;
+                        const isCurrent = (profile?.semester || 'Semester 1') === sLabel;
+                        return (
+                          <button
+                            key={sNum}
+                            type="button"
+                            onClick={() => {
+                              onUpdateSemester?.(sLabel);
+                              setIsSemesterMenuOpen(false);
+                            }}
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              border: isCurrent ? '1.5px solid var(--forest-800)' : '1px solid var(--border-card, #E3DDCF)',
+                              backgroundColor: isCurrent ? 'rgba(104, 143, 120, 0.16)' : 'var(--bg-card-warm, #FAF8F3)',
+                              color: isCurrent ? 'var(--forest-950)' : 'var(--forest-900)',
+                              fontWeight: isCurrent ? 700 : 600,
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between'
+                            }}
+                          >
+                            <span>Sem {sNum}</span>
+                            {isCurrent && <IconCheckCircle size={13} style={{ color: 'var(--forest-800)' }} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Student Profile Quick Trigger */}

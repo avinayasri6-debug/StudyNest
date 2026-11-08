@@ -6,34 +6,122 @@ import {
   SEMESTER_1_SUBJECTS,
   SAMPLE_SYLLABUS_DISCLAIMER,
   getAllSubjectTopics as baseGetAllTopics
-} from './subjectsData';
-import { ENGINEERING_BRANCHES } from './branchesData';
+} from './subjectsData.js';
 
 export { SAMPLE_SYLLABUS_DISCLAIMER };
 
+export const CURRICULUM_SOURCE_TYPES = {
+  OFFICIALLY_VERIFIED: 'verified',
+  SAMPLE_TEMPLATE: 'sample_template',
+  IMPORTED: 'imported',
+  CUSTOM: 'custom'
+};
+
 export const SYLLABUS_BADGES = {
   VERIFIED: {
-    label: 'Verified Standard Syllabus',
+    id: 'verified',
+    label: 'Officially Verified',
+    shortLabel: 'Verified',
     type: 'verified',
-    color: 'var(--forest-800)',
-    bg: 'rgba(104, 143, 120, 0.15)',
-    border: 'rgba(104, 143, 120, 0.3)'
+    color: 'var(--forest-800, #3B6E52)',
+    bg: 'rgba(59, 110, 82, 0.12)',
+    border: 'rgba(59, 110, 82, 0.3)',
+    description: 'Officially verified against authoritative university syllabus documentation.'
   },
-  CUSTOM: {
-    label: 'Student-Customized Curriculum',
-    type: 'custom',
-    color: '#8A6D3B',
-    bg: 'rgba(230, 215, 175, 0.25)',
-    border: 'rgba(200, 175, 120, 0.4)'
+  SAMPLE_TEMPLATE: {
+    id: 'sample_template',
+    label: 'Sample Template',
+    shortLabel: 'Sample',
+    type: 'sample_template',
+    color: 'var(--sage-700, #557562)',
+    bg: 'rgba(104, 143, 120, 0.14)',
+    border: 'rgba(104, 143, 120, 0.3)',
+    description: 'Illustrative sample curriculum template for initial guidance. Customize or upload your official syllabus.'
   },
   IMPORTED: {
+    id: 'imported',
     label: 'Imported Syllabus',
+    shortLabel: 'Imported',
     type: 'imported',
     color: '#2B5A8F',
     bg: 'rgba(180, 205, 230, 0.25)',
-    border: 'rgba(140, 175, 210, 0.4)'
+    border: 'rgba(140, 175, 210, 0.4)',
+    description: 'Extracted from student-uploaded syllabus PDF or document. Subject to student review.'
+  },
+  CUSTOM: {
+    id: 'custom',
+    label: 'Student Custom',
+    shortLabel: 'Custom',
+    type: 'custom',
+    color: '#8A6D3B',
+    bg: 'rgba(230, 215, 175, 0.25)',
+    border: 'rgba(200, 175, 120, 0.4)',
+    description: 'Created and configured directly by the student.'
   }
 };
+// Aliases for convenience
+SYLLABUS_BADGES.SAMPLE = SYLLABUS_BADGES.SAMPLE_TEMPLATE;
+
+/**
+ * Resolves curriculum source metadata and verification status for any subject.
+ * Strict verification rule:
+ * Officially verified ONLY if subject.verified === true AND has supporting verification evidence
+ * (e.g. subject.verificationRef or subject.verifiedBy or subject.officialSyllabusRef).
+ * Never infers official verification merely from subject code or title.
+ */
+export function getCurriculumSourceInfo(subject) {
+  if (!subject) return SYLLABUS_BADGES.CUSTOM;
+
+  // 1. Officially Verified: Strict condition with required supporting evidence
+  const hasEvidence = Boolean(
+    subject.verificationRef ||
+    subject.verifiedBy ||
+    subject.officialSyllabusRef ||
+    subject.authoritativeSource
+  );
+  if (
+    subject.verified === true &&
+    hasEvidence &&
+    subject.source !== 'sample_template' &&
+    subject.source !== 'custom' &&
+    subject.source !== 'imported'
+  ) {
+    return {
+      ...SYLLABUS_BADGES.VERIFIED,
+      isVerified: true,
+      evidence: subject.verificationRef || subject.verifiedBy || subject.officialSyllabusRef || subject.authoritativeSource,
+      sourceType: 'verified'
+    };
+  }
+
+  // 2. Imported Syllabus: from PDF, document, or pasted syllabus
+  if (subject.source === 'imported' || subject.id?.startsWith('imported-') || subject.importedFrom) {
+    return {
+      ...SYLLABUS_BADGES.IMPORTED,
+      isVerified: false,
+      importedFrom: subject.importedFrom || subject.metadata?.filename || null,
+      importDate: subject.importDate || null,
+      sourceType: 'imported'
+    };
+  }
+
+  // 3. Sample Template: example curriculum outline
+  if (subject.source === 'sample_template' || subject.isSample === true || subject.templateName) {
+    return {
+      ...SYLLABUS_BADGES.SAMPLE_TEMPLATE,
+      isVerified: false,
+      templateName: subject.templateName || 'Sample Curriculum Template',
+      sourceType: 'sample_template'
+    };
+  }
+
+  // 4. Student Custom: default for user-created courses and legacy entries
+  return {
+    ...SYLLABUS_BADGES.CUSTOM,
+    isVerified: false,
+    sourceType: 'custom'
+  };
+}
 
 // ============================================================================
 // VERIFIED CORE SUBJECTS FOR SEMESTER 2 ACROSS BRANCH TRACKS
@@ -51,7 +139,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Computing & Software',
       semester: 2,
       branchTrack: 'computing',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Abstract data types, arrays, linked lists, stacks, queues, trees, graphs, sorting, searching, and algorithmic asymptotic analysis.',
       units: [
         {
@@ -118,7 +207,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Core Engineering Mathematics',
       semester: 2,
       branchTrack: 'computing',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Propositional logic, set theory, combinatorics, recurrence relations, algebraic structures, and graph connectivity.',
       units: [
         {
@@ -173,7 +263,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Computing & Software',
       semester: 2,
       branchTrack: 'computing',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Encapsulation, inheritance, polymorphism, abstract classes, exception handling, multithreading, and design patterns.',
       units: [
         {
@@ -218,7 +309,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Electronics & Hardware',
       semester: 2,
       branchTrack: 'computing',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Boolean algebra, Karnaugh maps, combinational adders/multiplexers, flip-flops, sequential counters, and ALU design.',
       units: [
         {
@@ -263,7 +355,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Basic Sciences',
       semester: 2,
       branchTrack: 'computing',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Electrochemistry, lithium-ion battery storage, polymer semiconductors, nano-materials, and spectroscopy.',
       units: [
         {
@@ -302,7 +395,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Electronics & Hardware',
       semester: 2,
       branchTrack: 'electronics',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Mesh & node analysis, network theorems, transient RL/RC/RLC response, Laplace transforms, and two-port network parameters.',
       units: [
         {
@@ -347,7 +441,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Electronics & Hardware',
       semester: 2,
       branchTrack: 'electronics',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Energy band theory, PN junctions, Zener diodes, BJT characteristics, MOSFET operation, and CMOS logic gates.',
       units: [
         {
@@ -396,7 +491,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Mechanical & Physical Systems',
       semester: 2,
       branchTrack: 'mechanical_civil',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Equilibrium of force systems, free-body diagrams, friction, trusses, centroid, moment of inertia, kinematics, and kinetics.',
       units: [
         {
@@ -441,7 +537,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Workshops & Soft Skills',
       semester: 2,
       branchTrack: 'mechanical_civil',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Orthographic projections of points, lines, planes, solids, sectioning, isometric views, and 3D parametric CAD modeling.',
       units: [
         {
@@ -480,7 +577,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Process & Materials',
       semester: 2,
       branchTrack: 'bio_chemical',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Stoichiometry, steady-state material balances, recycle & purge streams, humidity, psychrometric charts, and combustion calculations.',
       units: [
         {
@@ -515,7 +613,8 @@ export const SEMESTER_2_CORE_SUBJECTS = {
       category: 'Bioengineering & Life Sciences',
       semester: 2,
       branchTrack: 'bio_chemical',
-      verified: true,
+      verified: false,
+      isSample: true,
       description: 'Prokaryotic vs eukaryotic cell structure, membrane transport, cell signaling, DNA replication, transcription, and translation.',
       units: [
         {
@@ -660,103 +759,198 @@ export function getBranchTrack(branchId) {
 }
 
 /**
- * Get verified standard subjects for a specific branch and semester
+ * Safely parses semester number from number or string like "Semester 3", "Sem 4"
  */
-export function getStandardSubjectsForBranch(branchId = 'cse', semester = 1) {
-  const semNum = Number.parseInt(semester, 10) || 1;
+export function parseSemesterNumber(semester) {
+  if (typeof semester === 'number') return semester;
+  if (!semester) return 1;
+  const digits = String(semester).replace(/\D/g, '');
+  return Number.parseInt(digits, 10) || 1;
+}
 
-  // Semester 1: Foundational core engineering shared across branches
-  if (semNum === 1) {
+/**
+ * Checks whether the university corresponds to Godavari Global University (or recognized aliases).
+ */
+export function isGodavariGlobalUniversity({ university = '', college = '', universityId = '' } = {}) {
+  const uId = (universityId || '').toLowerCase().trim();
+  if (uId === 'ggu') return true;
+
+  const raw = (university || college || '').toLowerCase().trim();
+  if (!raw) return false;
+
+  if (raw === 'ggu') return true;
+  if (raw.includes('godavari')) return true;
+  if (raw.includes('giet campus') || raw.includes('giet rajahmundry')) return true;
+
+  return false;
+}
+
+/**
+ * Checks whether the branch corresponds to CSE-AIML or GGU Computer Science.
+ * Strictly excludes IT, standalone AIML, Data Science, and non-computing branches.
+ */
+export function isCseAimlBranch({ branchId = '', branch = '' } = {}) {
+  const bId = (branchId || '').toLowerCase().trim();
+  const rawName = (branch || '').toLowerCase().trim();
+
+  // Normalize delimiters to simplify pattern matching
+  const normalizedName = rawName
+    .replace(/[()[\]{}]/g, ' ')
+    .replace(/[-_/\\&+,]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const compressed = rawName.replace(/[\s-_/\\()&+,]/g, '');
+
+  // 1. Check explicit CSE-AIML combinations FIRST (before standalone AIML rejection)
+  const isExplicitCseAimlId = bId === 'cse-aiml' || bId === 'cse_aiml' || bId === 'cseaiml';
+
+  const hasCseToken =
+    compressed.includes('cse') ||
+    normalizedName.includes('cse') ||
+    normalizedName.includes('computer science');
+
+  const hasAiMlToken =
+    compressed.includes('aiml') ||
+    compressed.includes('ai') ||
+    normalizedName.includes('aiml') ||
+    normalizedName.includes('ai ml') ||
+    normalizedName.includes('ai and ml') ||
+    normalizedName.includes('artificial intelligence') ||
+    normalizedName.includes('machine learning');
+
+  // Both CSE/Computer Science AND AI/ML must be present for a CSE-AIML combination
+  const isCseAimlCombo = hasCseToken && hasAiMlToken;
+
+  if (isExplicitCseAimlId || isCseAimlCombo) {
+    return true;
+  }
+
+  // 2. Reject other engineering disciplines and standalone AIML / IT / DS
+  if (['it', 'ds', 'aiml', 'ece', 'eee', 'me', 'civil', 'che', 'bt'].includes(bId)) {
+    return false;
+  }
+
+  const isOtherDiscipline =
+    normalizedName.includes('information technology') ||
+    normalizedName.includes('info technology') ||
+    normalizedName.includes('data science') ||
+    normalizedName.includes('mechanical') ||
+    normalizedName.includes('civil') ||
+    normalizedName.includes('electrical') ||
+    normalizedName.includes('electronics') ||
+    normalizedName.includes('chemical') ||
+    normalizedName.includes('biotech') ||
+    normalizedName.includes('aerospace') ||
+    normalizedName === 'artificial intelligence and machine learning' ||
+    normalizedName === 'ai machine learning' ||
+    normalizedName === 'aiml' ||
+    normalizedName === 'ai ml';
+
+  if (isOtherDiscipline) {
+    return false;
+  }
+
+  // 3. Accept pure CSE (Computer Science and Engineering) under GGU
+  if (bId === 'cse') return true;
+  if (
+    normalizedName.includes('computer science and engineering') ||
+    normalizedName.includes('computer science') ||
+    normalizedName === 'cse'
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Get standard subjects for a specific university, branch and semester.
+ * Initial sample template is provided strictly for Godavari Global University CSE-AIML Semester 1.
+ * Clearly identified as sample content (verified: false, isSample: true, source: 'sample_template').
+ * Never automatically assigned to IT, AIML, Data Science, other universities, or other semesters.
+ */
+export function getStandardSubjectsForBranch(arg1 = 'cse', arg2 = 1, arg3 = '') {
+  let university = '';
+  let college = '';
+  let universityId = '';
+  let branchId = 'cse';
+  let branch = '';
+  let semester = 1;
+
+  if (typeof arg1 === 'object' && arg1 !== null) {
+    university = arg1.university || arg1.profile?.college || arg1.profile?.university || '';
+    college = arg1.college || arg1.profile?.college || '';
+    universityId = arg1.universityId || arg1.profile?.universityId || '';
+    branchId = arg1.branchId || arg1.profile?.branchId || arg1.branch || 'cse';
+    branch = arg1.branch || arg1.profile?.branch || '';
+    semester = arg1.semester ?? arg1.profile?.semester ?? 1;
+  } else {
+    branchId = arg1 || 'cse';
+    semester = arg2 ?? 1;
+    college = typeof arg3 === 'string' ? arg3 : '';
+    university = college;
+  }
+
+  const semNum = parseSemesterNumber(semester);
+  const isGgu = isGodavariGlobalUniversity({ university, college, universityId });
+  const isCseAiml = isCseAimlBranch({ branchId, branch });
+
+  // Semester 1: Initial sample template specifically for Godavari Global University CSE-AIML.
+  // Never automatically assigned to IT, AIML, Data Science, other universities, or other semesters.
+  if (semNum === 1 && isGgu && isCseAiml) {
     return SEMESTER_1_SUBJECTS.map((s) => ({
       ...s,
       semester: 1,
-      verified: true,
-      source: 'verified'
+      verified: false,
+      isSample: true,
+      source: 'sample_template',
+      templateName: 'Godavari Global University · CSE-AIML Sample Template (Semester 1)'
     }));
   }
 
-  // Semester 2: Track-specific verified subjects
-  if (semNum === 2) {
-    const track = getBranchTrack(branchId);
-    const trackSubjects = SEMESTER_2_CORE_SUBJECTS[track] || SEMESTER_2_CORE_SUBJECTS.computing;
-    return trackSubjects.map((s) => ({
-      ...s,
-      semester: 2,
-      verified: true,
-      source: 'verified'
-    }));
-  }
-
-  // Higher Semesters (3-8): Branch-specific core templates
-  const bid = branchId ? branchId.toLowerCase().trim() : 'cse';
-  const branchList = BRANCH_ADVANCED_CURRICULUM_TEMPLATES[bid] || BRANCH_ADVANCED_CURRICULUM_TEMPLATES.cse;
-  const semSubjects = branchList.filter((s) => s.semester === semNum);
-
-  if (semSubjects.length > 0) {
-    return semSubjects.map((s, idx) => ({
-      id: `${bid}-sem${semNum}-${idx + 1}`,
-      code: s.code,
-      title: s.title,
-      shortName: s.title.split(' ')[0],
-      department: ENGINEERING_BRANCHES.find((b) => b.id === bid)?.department || 'Engineering Faculty',
-      credits: s.credits || 4,
-      category: s.category || 'Core Engineering',
-      semester: semNum,
-      verified: true,
-      source: 'verified',
-      description: `Official undergraduate curriculum course for ${s.title} prescribed under university academic regulations.`,
-      units: [
-        {
-          unitNumber: 1,
-          unitTitle: 'Fundamental Principles and Theory',
-          topics: [
-            { id: `${bid}-s${semNum}-u1-t1`, name: 'Core Foundations & Governing Axioms' },
-            { id: `${bid}-s${semNum}-u1-t2`, name: 'Mathematical Formulations & System Models' },
-            { id: `${bid}-s${semNum}-u1-t3`, name: 'Analytical Derivations & State Equations' }
-          ]
-        },
-        {
-          unitNumber: 2,
-          unitTitle: 'Methodology and Practical Implementations',
-          topics: [
-            { id: `${bid}-s${semNum}-u2-t1`, name: 'Engineering Workflows and Applied Design' },
-            { id: `${bid}-s${semNum}-u2-t2`, name: 'Optimization & Computational Solvers' },
-            { id: `${bid}-s${semNum}-u2-t3`, name: 'Validation, Testing, and Error Margins' }
-          ]
-        },
-        {
-          unitNumber: 3,
-          unitTitle: 'Advanced Applications and Industry Standards',
-          topics: [
-            { id: `${bid}-s${semNum}-u3-t1`, name: 'Emerging Frameworks & High-Performance Scaling' },
-            { id: `${bid}-s${semNum}-u3-t2`, name: 'Case Studies & Real-World Deployments' }
-          ]
-        }
-      ]
-    }));
-  }
-
-  // Fallback if semester has no registered standard subjects yet
+  // For unsupported university/branch/semester combinations, return only an empty array.
+  // Never invent courses for other universities or higher semesters.
   return [];
 }
 
 /**
- * Combines standard subjects, student custom subjects, and local overrides
+ * Combines standard subjects, student custom subjects, and local overrides.
+ * Accepts university, branch, and semester (or profile object).
  */
 export function getActiveCurriculumSubjects({
-  branchId = 'cse',
+  university = '',
+  college = '',
+  universityId = '',
+  branchId = '',
+  branch = '',
   semester = 1,
   customSubjects = [],
-  subjectOverrides = {}
-}) {
-  const semNum = Number.parseInt(semester, 10) || 1;
-  const standard = getStandardSubjectsForBranch(branchId, semNum);
+  subjectOverrides = {},
+  profile = null
+} = {}) {
+  const targetUni = university || profile?.college || profile?.university || college || '';
+  const targetUniId = universityId || profile?.universityId || '';
+  const targetBranchId = branchId || profile?.branchId || 'cse';
+  const targetBranch = branch || profile?.branch || '';
+  const semNum = parseSemesterNumber(semester ?? profile?.semester ?? 1);
+
+  const standard = getStandardSubjectsForBranch({
+    university: targetUni,
+    college: targetUni,
+    universityId: targetUniId,
+    branchId: targetBranchId,
+    branch: targetBranch,
+    semester: semNum
+  });
+
+  const normalizedBranch = targetBranchId.toLowerCase().trim();
 
   // Filter custom subjects matching this semester and branch (or common to all)
   const userSubjects = customSubjects.filter((cs) => {
-    const csSem = Number.parseInt(cs.semester, 10) || 1;
+    const csSem = parseSemesterNumber(cs.semester);
     if (csSem !== semNum) return false;
-    if (!cs.branchId || cs.branchId === 'all' || cs.branchId === branchId) return true;
+    if (!cs.branchId || cs.branchId === 'all' || cs.branchId.toLowerCase().trim() === normalizedBranch) return true;
     return false;
   });
 

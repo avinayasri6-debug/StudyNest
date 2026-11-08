@@ -85,7 +85,7 @@ export function getPublicAiStatus() {
 /**
  * Builds a comprehensive engineering pedagogical system prompt.
  */
-export function buildSystemPrompt({ subject, mode = 'intermediate', quickAction = null, studentProfile = null }) {
+export function buildSystemPrompt({ subject, mode = 'intermediate', quickAction = null, studentProfile = null, unitNumber = null, topic = null }) {
   const subjectName = subject?.title || 'Engineering Course';
   const subjectCode = subject?.code || 'ENG';
   const branchName = studentProfile?.branch || 'Engineering';
@@ -204,12 +204,12 @@ QUICK ACTION FOCUS: PYTHON CODE BREAKDOWN & LAB HELP
 - Expected standard output.
 - Time and Space Complexity.
 - Common runtime or logical errors students make with this pattern.
-- Note that the student can click the "Run in Python Practice Lab" button in StudyNest to test this code immediately.
+- Note that the student can click the "Run in Python Practice Lab" button in Sagevanta to test this code immediately.
 `;
   }
 
   return `
-You are the StudyNest AI Engineering Study Assistant — an intelligent, patient, and pedagogically sound academic tutor for undergraduate engineering students.
+You are the Sagevanta AI Engineering Study Assistant — an intelligent, patient, and pedagogically sound academic tutor for undergraduate engineering students.
 
 STUDENT ACADEMIC CONTEXT:
 - Student Degree & Branch: ${degreeName} in ${branchName}
@@ -217,7 +217,7 @@ STUDENT ACADEMIC CONTEXT:
 - Academic Stage: ${yearName} (${semesterName})
 - Regulation Framework: ${curriculumScheme}
 - Current Subject: ${subjectName} (${subjectCode})
-${branchCalibration}
+${unitNumber && unitNumber !== 'all' ? `- Focused Syllabus Unit: Unit ${unitNumber}\n` : ''}${topic && topic !== 'all' ? `- Focused Syllabus Topic: ${topic}\n` : ''}${branchCalibration}
 ${modeInstruction}
 ${quickActionInstruction}
 
@@ -378,7 +378,7 @@ async function callGemini({
 }) {
   const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
   const targetModel = model || primaryModel;
-  const fallbackModel = 'gemini-3.6-flash';
+  const fallbackModel = 'gemini-3.1-flash-lite';
 
   // 1. Establish or pass through the shared overall request deadline (57 seconds absolute timestamp)
   const deadline = overallDeadline || (Date.now() + OVERALL_REQUEST_DEADLINE_MS);
@@ -1415,7 +1415,7 @@ To master this topic in **${subTitle}**, break the problem down into its fundame
 /**
  * Main chat dispatcher called from API endpoint
  */
-export async function processChatRequest({ messages, subject, mode = 'intermediate', quickAction = null, studentProfile = null }) {
+export async function processChatRequest({ messages, subject, mode = 'intermediate', quickAction = null, studentProfile = null, unitNumber = null, topic = null }) {
   const config = getAiConfig();
 
   const latestUserMessage = messages?.slice().reverse().find((m) => m.role === 'user')?.content || '';
@@ -1441,7 +1441,7 @@ export async function processChatRequest({ messages, subject, mode = 'intermedia
   }
 
   // API Key is configured -> generate system prompt and call real LLM
-  const systemInstruction = buildSystemPrompt({ subject, mode, quickAction, studentProfile });
+  const systemInstruction = buildSystemPrompt({ subject, mode, quickAction, studentProfile, unitNumber, topic });
   const overallDeadline = Date.now() + OVERALL_REQUEST_DEADLINE_MS;
 
   try {

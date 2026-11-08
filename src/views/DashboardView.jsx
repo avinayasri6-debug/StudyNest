@@ -1,17 +1,76 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   IconSparkles,
   IconBook,
   IconPython,
   IconCalendar,
   IconChevronRight,
-  IconCheckCircle
+  IconCheckCircle,
+  IconClock
 } from '../components/Icons';
-import DailyChallengeCard from '../components/DailyChallengeCard';
-import { SEMESTER_1_SUBJECTS, getAllSubjectTopics } from '../data/subjectsData';
+import WelcomeBanner from '../components/WelcomeBanner';
+import { getActiveCurriculumSubjects, getAllSubjectTopics, parseSemesterNumber } from '../data/curriculumData';
 import { PYTHON_MODULES } from '../data/pythonCurriculum';
 import { VIDEO_LESSONS } from '../data/videosData';
 import './DashboardView.css';
+
+function getMondayTimestamp() {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const diffToMonday = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+  return monday.getTime();
+}
+
+function formatExamDate(dateStr) {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return dateStr;
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function computeWeeklyStudyMinutes(studySessions) {
+  const mondayTime = getMondayTimestamp();
+  return (studySessions || [])
+    .filter((s) => {
+      if (!s.date) return false;
+      const [y, m, d] = s.date.split('-').map(Number);
+      if (!y || !m || !d) return false;
+      const sessionTime = new Date(y, m - 1, d).getTime();
+      return sessionTime >= mondayTime;
+    })
+    .reduce((acc, s) => acc + (Number(s.minutes) || 0), 0);
+}
+
+function findNearestUpcomingExam(upcomingExams) {
+  if (!upcomingExams || upcomingExams.length === 0) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+
+  const validUpcoming = upcomingExams
+    .map((exam) => {
+      if (!exam.date) return null;
+      const [y, m, d] = exam.date.split('-').map(Number);
+      if (!y || !m || !d) return null;
+      const examDate = new Date(y, m - 1, d);
+      examDate.setHours(0, 0, 0, 0);
+      const diffMs = examDate.getTime() - todayTime;
+      const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      return {
+        ...exam,
+        examDate,
+        daysRemaining
+      };
+    })
+    .filter((exam) => exam !== null && exam.daysRemaining >= 0)
+    .sort((a, b) => a.daysRemaining - b.daysRemaining);
+
+  return validUpcoming.length > 0 ? validUpcoming[0] : null;
+}
 
 function resolveContinueItem({
   recentlyWatchedVideos,
@@ -19,13 +78,18 @@ function resolveContinueItem({
   completedModuleIds,
   completedTopics,
   onNavigate,
-  onSelectSubject
+  onSelectSubject,
+  profile,
+  customSubjects = [],
+  subjectOverrides = {}
 }) {
   // 1. Check recently watched video lectures
   if (recentlyWatchedVideos && recentlyWatchedVideos.length > 0) {
-    const last = recentlyWatchedVideos[0];
-    const video = VIDEO_LESSONS.find((v) => v.id === last.videoId);
-    if (video) {
+    const validVideos = recentlyWatchedVideos
+      .map((rw) => VIDEO_LESSONS.find((v) => v.id === rw.videoId))
+      .filter((v) => Boolean(v) && v.title !== 'Universal Logic Gate Minimization' && v.topicName !== 'Universal Logic Gate Minimization');
+    if (validVideos.length > 0) {
+      const video = validVideos[0];
       return {
         tag: 'Recent Lecture',
         title: video.title,
@@ -38,15 +102,20 @@ function resolveContinueItem({
 
   // 2. Check recent study sessions
   if (studySessions && studySessions.length > 0) {
-    const lastSession = studySessions[studySessions.length - 1];
-    if (lastSession && (lastSession.topic || lastSession.subject)) {
-      return {
-        tag: 'Recent Study Session',
-        title: lastSession.topic || lastSession.subject,
-        subtitle: `${lastSession.subject ? `${lastSession.subject} · ` : ''}${lastSession.minutes || 25} mins logged`,
-        buttonText: 'Continue Studying',
-        onClick: () => onNavigate('planner')
-      };
+    const validSessions = studySessions.filter(
+      (s) => s.topic !== 'Universal Logic Gate Minimization' && s.subject !== 'Universal Logic Gate Minimization'
+    );
+    if (validSessions.length > 0) {
+      const lastSession = validSessions[validSessions.length - 1];
+      if (lastSession && (lastSession.topic || lastSession.subject)) {
+        return {
+          tag: 'Recent Study Session',
+          title: lastSession.topic || lastSession.subject,
+          subtitle: `${lastSession.subject ? `${lastSession.subject} · ` : ''}${lastSession.minutes || 25} mins logged`,
+          buttonText: 'Continue Studying',
+          onClick: () => onNavigate('planner')
+        };
+      }
     }
   }
 
@@ -64,17 +133,32 @@ function resolveContinueItem({
     }
   }
 
-  // 4. Check subjects with completed topics
-  if (completedTopics && Object.keys(completedTopics).length > 0) {
-    for (const sub of SEMESTER_1_SUBJECTS) {
+  // 4. Check active curriculum subjects
+  const semNum = parseSemesterNumber(profile?.semester);
+  const currentSubjects = getActiveCurriculumSubjects({
+    profile,
+    university: profile?.college || profile?.university,
+    college: profile?.college,
+    universityId: profile?.universityId,
+    branchId: profile?.branchId,
+    branch: profile?.branch,
+    semester: semNum,
+    customSubjects,
+    subjectOverrides
+  });
+
+  if (completedTopics && Object.keys(completedTopics).length > 0 && currentSubjects.length > 0) {
+    for (const sub of currentSubjects) {
       const completed = completedTopics[sub.id];
       if (completed && completed.length > 0) {
         const allTopics = getAllSubjectTopics(sub);
-        const nextTopic = allTopics.find((t) => !completed.includes(t.id));
+        const nextTopic = allTopics.find(
+          (t) => !completed.includes(t.id) && t.name !== 'Universal Logic Gate Minimization'
+        );
         return {
           tag: 'Active Course',
           title: nextTopic ? nextTopic.name : sub.title,
-          subtitle: `${sub.code} · ${sub.shortName}`,
+          subtitle: `${sub.code} · ${sub.shortName || sub.title}`,
           buttonText: 'Resume Course',
           onClick: () => {
             if (onSelectSubject) {
@@ -88,20 +172,31 @@ function resolveContinueItem({
     }
   }
 
-  // 5. Default recommendation for new student / clean slate
-  const defaultSub = SEMESTER_1_SUBJECTS[0];
-  return {
-    tag: 'Recommended Course',
-    title: defaultSub.title,
-    subtitle: `${defaultSub.code} · Core Engineering Foundation (${defaultSub.credits} Credits)`,
-    buttonText: 'Start Learning',
-    onClick: () => {
-      if (onSelectSubject) {
-        onSelectSubject(defaultSub);
-      } else {
-        onNavigate('subjects');
+  // 5. Default recommendation if subjects exist
+  if (currentSubjects.length > 0) {
+    const defaultSub = currentSubjects[0];
+    return {
+      tag: 'Recommended Course',
+      title: defaultSub.title,
+      subtitle: `${defaultSub.code} · ${defaultSub.shortName || defaultSub.title} (${defaultSub.credits || 4} Credits)`,
+      buttonText: 'Start Learning',
+      onClick: () => {
+        if (onSelectSubject) {
+          onSelectSubject(defaultSub);
+        } else {
+          onNavigate('subjects');
+        }
       }
-    }
+    };
+  }
+
+  // 6. Graceful empty state for branch/semester awaiting syllabus
+  return {
+    tag: 'Academic Setup',
+    title: `Configure ${profile?.semester || 'Semester'} Courses`,
+    subtitle: `Upload your ${profile?.branch || 'engineering'} syllabus PDF or add courses in My Courses.`,
+    buttonText: 'Configure Courses',
+    onClick: () => onNavigate('subjects')
   };
 }
 
@@ -115,7 +210,7 @@ export default function DashboardView({
   _assignments = [],
   studySessions = [],
   _plannedSessions = [],
-  _upcomingExams = [],
+  upcomingExams = [],
   recentlyWatchedVideos = [],
   _watchLaterVideoIds = [],
   _completedVideoIds = [],
@@ -123,24 +218,113 @@ export default function DashboardView({
   onNavigate,
   _searchTerm = '',
   onShowToast,
-  onOpenPlayground
+  onOpenPlayground,
+  customSubjects = [],
+  subjectOverrides = {}
 }) {
-  const studentFirstName = profile?.name ? profile.name.trim().split(' ')[0] : 'Student';
-  const branchSubtitle = profile?.branch
-    ? `${profile.branch} · ${profile.semester || 'Semester 1'}`
-    : 'Semester 1 Engineering';
+  // 1. Resolve Active Subjects & Dynamic Metrics
+  const semNum = parseSemesterNumber(profile?.semester);
+  const activeSubjects = useMemo(() => {
+    return getActiveCurriculumSubjects({
+      profile,
+      university: profile?.college || profile?.university,
+      college: profile?.college,
+      universityId: profile?.universityId,
+      branchId: profile?.branchId,
+      branch: profile?.branch,
+      semester: semNum,
+      customSubjects,
+      subjectOverrides
+    });
+  }, [profile, semNum, customSubjects, subjectOverrides]);
 
-  // 1. Derive the single most useful Continue Learning item from real activity
+  const totalCredits = useMemo(() => {
+    return activeSubjects.reduce((acc, s) => acc + (Number(s.credits) || 0), 0);
+  }, [activeSubjects]);
+
+  const { completedTopicsCount, totalTopicsCount } = useMemo(() => {
+    let completed = 0;
+    let total = 0;
+    activeSubjects.forEach((sub) => {
+      const allTopics = getAllSubjectTopics(sub);
+      total += allTopics.length;
+      const doneList = completedTopics[sub.id] || [];
+      completed += doneList.length;
+    });
+    return { completedTopicsCount: completed, totalTopicsCount: total };
+  }, [activeSubjects, completedTopics]);
+
+  const totalStudyMinutes = useMemo(() => {
+    return (studySessions || []).reduce((acc, s) => acc + (Number(s.minutes) || 0), 0);
+  }, [studySessions]);
+  const studyHoursLogged = (totalStudyMinutes / 60).toFixed(1);
+
+  // 2. Weekly Study Goal Metrics
+  const weeklyTargetHours = useMemo(() => {
+    const rawTarget = profile?.studyGoals?.weeklyHoursTarget;
+    const num = Number(rawTarget);
+    return num > 0 ? num : 20.0;
+  }, [profile?.studyGoals?.weeklyHoursTarget]);
+
+  const currentWeekMinutes = useMemo(() => {
+    return computeWeeklyStudyMinutes(studySessions);
+  }, [studySessions]);
+
+  const currentWeekHours = Number((currentWeekMinutes / 60).toFixed(1));
+  const weeklyGoalPercent = Math.min(100, Math.round((currentWeekHours / weeklyTargetHours) * 100));
+
+  const weeklyGoalMessage = useMemo(() => {
+    if (currentWeekHours === 0) {
+      return 'No study sessions logged yet this week. Start a focus session in Study Planner to build momentum.';
+    }
+    if (currentWeekHours >= weeklyTargetHours) {
+      return `Target achieved! You've completed ${currentWeekHours.toFixed(1)} of ${weeklyTargetHours} hrs (${weeklyGoalPercent}%) this week. Excellent dedication!`;
+    }
+    if (weeklyGoalPercent >= 50) {
+      return `Great momentum! You're ${weeklyGoalPercent}% toward reaching your ${weeklyTargetHours} hrs weekly target.`;
+    }
+    return `Keep going! You've completed ${currentWeekHours.toFixed(1)} hrs of your ${weeklyTargetHours} hrs weekly goal.`;
+  }, [currentWeekHours, weeklyTargetHours, weeklyGoalPercent]);
+
+  // 3. Upcoming Examination Determination (excluding past dates)
+  const nearestExam = useMemo(() => {
+    return findNearestUpcomingExam(upcomingExams);
+  }, [upcomingExams]);
+
+  const nearestExamSubjectTitle = useMemo(() => {
+    if (!nearestExam) return '';
+    const matching = activeSubjects.find(
+      (s) => s.id === nearestExam.subjectId || s.code === nearestExam.subjectCode
+    );
+    if (matching) {
+      return `${matching.code} · ${matching.shortName || matching.title}`;
+    }
+    if (nearestExam.subjectName && nearestExam.subjectCode) {
+      return `${nearestExam.subjectCode} · ${nearestExam.subjectName}`;
+    }
+    return nearestExam.subjectName || nearestExam.subjectCode || nearestExam.title || 'Engineering Course';
+  }, [nearestExam, activeSubjects]);
+
+  // 4. Derive Continue Learning item
   const continueItem = resolveContinueItem({
     recentlyWatchedVideos,
     studySessions,
     completedModuleIds,
     completedTopics,
     onNavigate,
-    onSelectSubject
+    onSelectSubject,
+    profile,
+    customSubjects,
+    subjectOverrides
   });
 
-  // 2. The four primary feature cards
+  // Defensive filter: Ensure Universal Logic Gate Minimization never displays in Continue Learning
+  if (continueItem && (continueItem.title === 'Universal Logic Gate Minimization' || continueItem.subtitle?.includes('Universal Logic Gate Minimization'))) {
+    continueItem.title = 'Digital Electronics Core Studies';
+    continueItem.subtitle = 'Fundamentals of Digital Electronics · Core Studies';
+  }
+
+  // 5. The four primary feature cards
   const FEATURE_CARDS = [
     {
       id: 'ai-assistant',
@@ -153,7 +337,7 @@ export default function DashboardView({
     {
       id: 'subjects',
       title: 'My Courses',
-      description: 'Explore all 7 Semester 1 curricula with interactive syllabus checklists and verified unit topics.',
+      description: `Explore ${profile?.semester || 'Semester 1'} course curricula with interactive syllabus checklists and verified unit topics.`,
       icon: IconBook,
       actionText: 'View All Courses',
       onClick: () => onNavigate('subjects')
@@ -176,8 +360,10 @@ export default function DashboardView({
     }
   ];
 
-  // 3. Small pending tasks (up to 3 real tasks if present)
-  const pendingTasks = (tasks || []).filter((t) => !t.completed).slice(0, 3);
+  // 6. Small pending tasks
+  const pendingTasks = (tasks || [])
+    .filter((t) => !t.completed && t.title !== 'Universal Logic Gate Minimization')
+    .slice(0, 3);
 
   const handleToggleTask = (taskId) => {
     if (!onSaveTasks) return;
@@ -188,34 +374,133 @@ export default function DashboardView({
 
   return (
     <div className="dashboard-container">
-      {/* 1. Simple Welcome Heading & Short Subtitle */}
-      <header className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 className="dashboard-greeting">Good day, {studentFirstName}.</h1>
-          <p className="dashboard-subtitle">Here is your academic workspace for {branchSubtitle}.</p>
+      {/* 1. Dynamic Personalized Welcome Banner */}
+      <WelcomeBanner
+        profile={profile}
+        activeSubjects={activeSubjects}
+        totalCredits={totalCredits}
+        completedTopicsCount={completedTopicsCount}
+        totalTopicsCount={totalTopicsCount}
+        completedPythonCount={completedModuleIds.length}
+        studyHoursLogged={studyHoursLogged}
+        onQuickAction={() => onNavigate('python')}
+        onOpenPlayground={onOpenPlayground}
+      />
+
+      {/* 2. Personalized Metrics & Imminent Milestones (Weekly Goal & Upcoming Exam) */}
+      <section className="dashboard-milestones-section" aria-label="Goals and Milestones">
+        <div className="dashboard-milestones-grid">
+          {/* Card A: Weekly Study Goal Tracker */}
+          <div className="dashboard-milestone-card">
+            <div>
+              <div className="milestone-card-header">
+                <div className="milestone-header-icon-wrap">
+                  <IconClock size={18} />
+                </div>
+                <div className="milestone-header-info">
+                  <span className="milestone-card-kicker">Weekly Study Target</span>
+                  <h3 className="milestone-card-title">Study Goal Progress</h3>
+                </div>
+                <span className="milestone-pct-badge">{weeklyGoalPercent}%</span>
+              </div>
+
+              <div className="milestone-stat-display">
+                <span className="milestone-big-number">{currentWeekHours.toFixed(1)}</span>
+                <span className="milestone-unit">/ {weeklyTargetHours} hrs</span>
+              </div>
+
+              {/* Visual Progress Bar */}
+              <div
+                className="milestone-progress-track"
+                role="progressbar"
+                aria-valuenow={weeklyGoalPercent}
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-label="Weekly study goal progress"
+              >
+                <div
+                  className="milestone-progress-fill"
+                  style={{ width: `${Math.min(100, weeklyGoalPercent)}%` }}
+                />
+              </div>
+
+              <p className="milestone-status-text">
+                {weeklyGoalMessage}
+              </p>
+            </div>
+
+            <div className="milestone-card-footer">
+              <button
+                type="button"
+                className="milestone-action-btn"
+                onClick={() => onNavigate('planner')}
+              >
+                <span>Open Study Planner</span>
+                <IconChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Card B: Upcoming Examination Widget */}
+          <div className="dashboard-milestone-card">
+            <div>
+              <div className="milestone-card-header">
+                <div className="milestone-header-icon-wrap exam-icon">
+                  <IconCalendar size={18} />
+                </div>
+                <div className="milestone-header-info">
+                  <span className="milestone-card-kicker">Upcoming Examination</span>
+                  <h3 className="milestone-card-title">Next Scheduled Assessment</h3>
+                </div>
+                {nearestExam && (
+                  <span className={`milestone-countdown-badge ${nearestExam.daysRemaining <= 3 ? 'urgent' : ''}`}>
+                    {nearestExam.daysRemaining === 0
+                      ? 'Today'
+                      : nearestExam.daysRemaining === 1
+                      ? 'Tomorrow'
+                      : `In ${nearestExam.daysRemaining} days`}
+                  </span>
+                )}
+              </div>
+
+              {nearestExam ? (
+                <div className="milestone-exam-details">
+                  <div className="milestone-exam-subject">
+                    {nearestExamSubjectTitle}
+                  </div>
+                  <div className="milestone-exam-name">
+                    {nearestExam.examType || nearestExam.title || 'Semester Examination'}
+                  </div>
+                  <div className="milestone-exam-meta">
+                    <span>{formatExamDate(nearestExam.date)}</span>
+                    {nearestExam.time && <span> · {nearestExam.time}</span>}
+                    {nearestExam.room && <span> · {nearestExam.room}</span>}
+                  </div>
+                </div>
+              ) : (
+                <div className="milestone-empty-state">
+                  <p className="milestone-empty-text">
+                    No upcoming examinations currently scheduled. Plan study reviews or practice mock tests to stay exam-ready.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="milestone-card-footer">
+              <button
+                type="button"
+                className="milestone-action-btn"
+                onClick={() => onNavigate('exam-prep')}
+              >
+                <span>{nearestExam ? 'Prepare in Exam Prep' : 'Practice Mock Tests'}</span>
+                <IconChevronRight size={14} />
+              </button>
+            </div>
+          </div>
         </div>
+      </section>
 
-        {onOpenPlayground && (
-          <button
-            type="button"
-            className="sem2-action-btn"
-            onClick={onOpenPlayground}
-            style={{
-              backgroundColor: 'rgba(104, 143, 120, 0.15)',
-              color: 'var(--forest-900)',
-              borderColor: 'var(--border-sage)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <IconSparkles size={15} />
-            <span>Interactive Engineering Lab</span>
-          </button>
-        )}
-      </header>
-
-      {/* 2. One Useful Continue Learning Section */}
+      {/* 3. One Useful Continue Learning Section */}
       <section className="continue-learning-section" aria-labelledby="continue-learning-title">
         <div className="continue-learning-card">
           <div className="continue-learning-content">
@@ -239,10 +524,7 @@ export default function DashboardView({
         </div>
       </section>
 
-      {/* 3. Optional Daily Engineering Micro-Challenge */}
-      <DailyChallengeCard onShowToast={onShowToast} />
-
-      {/* 3. Four Primary Feature Cards */}
+      {/* 4. Four Primary Feature Cards */}
       <section className="dashboard-features-section" aria-label="Core Academic Features">
         <div className="dashboard-features-grid">
           {FEATURE_CARDS.map((card) => {
@@ -281,7 +563,7 @@ export default function DashboardView({
         </div>
       </section>
 
-      {/* 4. Small Upcoming Tasks Section (Only rendered if real tasks exist) */}
+      {/* 5. Small Upcoming Tasks Section (Only rendered if real tasks exist) */}
       {pendingTasks.length > 0 && (
         <section className="dashboard-tasks-section" aria-labelledby="upcoming-tasks-title">
           <div className="dashboard-tasks-header">

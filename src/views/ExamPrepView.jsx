@@ -14,9 +14,10 @@ import {
   IconReset,
   IconArrowLeft,
   IconArrowRight,
-  IconX
+  IconX,
+  IconBook
 } from '../components/Icons';
-import { SEMESTER_1_SUBJECTS } from '../data/subjectsData';
+import { getActiveCurriculumSubjects, getAllSubjectTopics, parseSemesterNumber } from '../data/curriculumData';
 import {
   SAMPLE_PRACTICE_QUESTIONS,
   PYTHON_ASSESSMENT_QUESTIONS,
@@ -52,8 +53,30 @@ export default function ExamPrepView({
   completedTopics = {},
   quizHistory = [],
   onShowToast,
-  onNavigateToPython
+  onNavigateToPython,
+  onNavigate,
+  customSubjects = [],
+  subjectOverrides = {}
 }) {
+  const semNum = parseSemesterNumber(profile?.semester);
+  const activeBranchId = profile?.branchId || 'cse';
+  const branchName = profile?.branch || 'Computer Science and Engineering';
+  const universityName = profile?.college || profile?.university || '';
+  const universityId = profile?.universityId || '';
+
+  const activeSubjects = useMemo(() => {
+    return getActiveCurriculumSubjects({
+      profile,
+      university: universityName,
+      college: universityName,
+      universityId,
+      branchId: activeBranchId,
+      branch: branchName,
+      semester: semNum,
+      customSubjects,
+      subjectOverrides
+    });
+  }, [profile, universityName, universityId, activeBranchId, branchName, semNum, customSubjects, subjectOverrides]);
   // Navigation tabs:
   // 'dashboard' | 'bank' | 'creator' | 'active-test' | 'results' | 'revision' | 'python-tests'
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -101,14 +124,15 @@ export default function ExamPrepView({
   // ==========================================
   // UPCOMING EXAMS MODAL STATE
   // ==========================================
+  const defaultSubjectCode = activeSubjects[0]?.code || 'MATH 101';
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
-  const [examForm, setExamForm] = useState({
-    subjectCode: 'MATH 101',
+  const [examForm, setExamForm] = useState(() => ({
+    subjectCode: defaultSubjectCode,
     title: 'Midterm Examination',
     date: '',
     targetScore: 90,
-    notes: 'Focus on Eigenvalues, Diagonalization and Cayley-Hamilton theorem.'
-  });
+    notes: 'Focus on core units and key formulas.'
+  }));
 
   const handleSaveExam = (e) => {
     e.preventDefault();
@@ -117,7 +141,7 @@ export default function ExamPrepView({
       return;
     }
 
-    const matchedSubject = SEMESTER_1_SUBJECTS.find((s) => s.code === examForm.subjectCode);
+    const matchedSubject = activeSubjects.find((s) => s.code === examForm.subjectCode);
     const newExam = {
       id: `exam-${Date.now()}`,
       title: examForm.title.trim(),
@@ -155,8 +179,8 @@ export default function ExamPrepView({
   // Custom question add/edit modal
   const [isQuestionModalOpen, setIsQuestionModalOpen] = useState(false);
   const [editingQuestionId, setEditingQuestionId] = useState(null);
-  const [questionForm, setQuestionForm] = useState({
-    subjectCode: 'MATH 101',
+  const [questionForm, setQuestionForm] = useState(() => ({
+    subjectCode: defaultSubjectCode,
     unit: 'Unit 1: Core Concepts',
     topic: 'Key Formulas',
     difficulty: 'Medium',
@@ -167,12 +191,12 @@ export default function ExamPrepView({
     option3: '',
     correct: 0,
     explanation: ''
-  });
+  }));
 
   const handleOpenAddQuestion = () => {
     setEditingQuestionId(null);
     setQuestionForm({
-      subjectCode: bankSubjectFilter !== 'ALL' ? bankSubjectFilter : 'MATH 101',
+      subjectCode: bankSubjectFilter !== 'ALL' ? bankSubjectFilter : defaultSubjectCode,
       unit: 'Unit 1: Core Concepts',
       topic: 'Practice Problem',
       difficulty: 'Medium',
@@ -194,7 +218,7 @@ export default function ExamPrepView({
       return;
     }
 
-    const matchedSubject = SEMESTER_1_SUBJECTS.find((s) => s.code === questionForm.subjectCode);
+    const matchedSubject = activeSubjects.find((s) => s.code === questionForm.subjectCode);
     const options = [
       questionForm.option0.trim(),
       questionForm.option1.trim(),
@@ -421,7 +445,7 @@ export default function ExamPrepView({
 
     const durationMins = customQuestionList ? Math.ceil(selected.length * 1.5) : testConfig.durationMinutes;
 
-    const matchedSub = SEMESTER_1_SUBJECTS.find((s) => s.code === testConfig.subjectCode);
+    const matchedSub = activeSubjects.find((s) => s.code === testConfig.subjectCode);
     const subjectName = matchedSub ? matchedSub.title : 'Mixed Engineering Exam';
 
     const newTest = {
@@ -737,6 +761,12 @@ export default function ExamPrepView({
                 {upcomingExams.map((exam) => {
                   const days = getDaysRemaining(exam.date);
                   const isUrgent = days !== null && days <= 7;
+                  const matchedSubject = activeSubjects.find(
+                    (s) => s.code === exam.subjectCode || s.id === exam.subjectId
+                  );
+                  const displayTitle = exam.title || exam.examType || 'Examination';
+                  const displaySubjectTitle =
+                    exam.subjectTitle || exam.subjectName || matchedSubject?.title || 'Engineering Subject';
                   return (
                     <div
                       key={exam.id}
@@ -750,10 +780,10 @@ export default function ExamPrepView({
                         <div>
                           <span className="subject-code-badge">{exam.subjectCode}</span>
                           <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--forest-950)', margin: '6px 0 2px 0' }}>
-                            {exam.title}
+                            {displayTitle}
                           </h3>
                           <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            {exam.subjectTitle}
+                            {displaySubjectTitle}
                           </div>
                         </div>
 
@@ -834,10 +864,28 @@ export default function ExamPrepView({
               Subject-wise Preparation Progress
             </h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '14px' }}>
-              {SEMESTER_1_SUBJECTS.map((subj) => {
-                const completedCount = (completedTopics[subj.id] || []).length;
-                const totalTopics = subj.topics ? subj.topics.length : 10;
-                const syllabusPct = Math.round((completedCount / totalTopics) * 100);
+              {activeSubjects.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid var(--border-card)', gridColumn: '1 / -1' }}>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: 0 }}>
+                    No subjects configured for {profile?.semester || 'this semester'} yet.
+                  </p>
+                  <button
+                    type="button"
+                    className="sem2-action-btn"
+                    onClick={() => onNavigate?.('subjects')}
+                    style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <IconBook size={14} />
+                    <span>Upload Syllabus or Add Courses</span>
+                  </button>
+                </div>
+              ) : (
+                activeSubjects.map((subj) => {
+                const allSubTopics = getAllSubjectTopics(subj);
+                const completedList = completedTopics[subj.id] || [];
+                const completedCount = allSubTopics.filter((t) => completedList.includes(t.id)).length;
+                const totalTopics = allSubTopics.length;
+                const syllabusPct = totalTopics > 0 ? Math.round((completedCount / totalTopics) * 100) : 0;
 
                 // Practice test accuracy for this subject
                 const subjectTests = mockTestResults.filter((r) => r.subjectCode === subj.code);
@@ -899,7 +947,7 @@ export default function ExamPrepView({
                     </div>
                   </div>
                 );
-              })}
+              }))}
             </div>
           </div>
 
@@ -1058,7 +1106,7 @@ export default function ExamPrepView({
               >
                 All Subjects ({allQuestions.length})
               </button>
-              {SEMESTER_1_SUBJECTS.map((s) => (
+              {activeSubjects.map((s) => (
                 <button
                   key={s.id}
                   type="button"
@@ -1317,7 +1365,7 @@ export default function ExamPrepView({
                   onChange={(e) => setTestConfig({ ...testConfig, subjectCode: e.target.value })}
                 >
                   <option value="ALL">All Subjects (Comprehensive Mixed Exam)</option>
-                  {SEMESTER_1_SUBJECTS.map((s) => (
+                  {activeSubjects.map((s) => (
                     <option key={s.id} value={s.code}>
                       {s.code} - {s.title}
                     </option>
@@ -2443,7 +2491,7 @@ export default function ExamPrepView({
                     value={examForm.subjectCode}
                     onChange={(e) => setExamForm({ ...examForm, subjectCode: e.target.value })}
                   >
-                    {SEMESTER_1_SUBJECTS.map((s) => (
+                    {activeSubjects.map((s) => (
                       <option key={s.id} value={s.code}>
                         {s.code} - {s.title}
                       </option>
@@ -2534,7 +2582,7 @@ export default function ExamPrepView({
                       value={questionForm.subjectCode}
                       onChange={(e) => setQuestionForm({ ...questionForm, subjectCode: e.target.value })}
                     >
-                      {SEMESTER_1_SUBJECTS.map((s) => (
+                      {activeSubjects.map((s) => (
                         <option key={s.id} value={s.code}>
                           {s.code} - {s.title}
                         </option>

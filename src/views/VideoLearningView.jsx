@@ -5,6 +5,7 @@ import {
   VIDEO_ACADEMIC_DISCLAIMER,
   DEFAULT_VIDEO_PLAYLISTS
 } from '../data/videosData';
+import { getActiveCurriculumSubjects, parseSemesterNumber } from '../data/curriculumData';
 import {
   IconVideo,
   IconBookmark,
@@ -60,10 +61,24 @@ export default function VideoLearningView({
   onSaveVideoPlaylists,
   videoBookmarks = [],
   onSaveVideoBookmarks,
-  _profile,
+  profile,
   initialSubjectId = 'all',
-  onShowToast
+  onShowToast,
+  customSubjects = [],
+  subjectOverrides = {},
+  _onNavigate
 }) {
+  // Dynamic resolution of student's active curriculum courses
+  const semNum = parseSemesterNumber(profile?.semester);
+  const activeCurriculumSubjects = useMemo(() => {
+    return getActiveCurriculumSubjects({
+      profile,
+      branchId: profile?.branchId || 'cse',
+      semester: semNum,
+      customSubjects,
+      subjectOverrides
+    });
+  }, [profile, semNum, customSubjects, subjectOverrides]);
   // Navigation tabs:
   // 'library' | 'playlists' | 'watch-later' | 'history' | 'bookmarks' | 'recommendations'
   const [activeTab, setActiveTab] = useState('library');
@@ -85,11 +100,12 @@ export default function VideoLearningView({
   const [bookmarkNoteInput, setBookmarkNoteInput] = useState('');
 
   // Add Custom Video Modal / Form
+  const defaultVideoSubId = activeCurriculumSubjects[0]?.id || 'math101';
   const [isAddingCustomVideo, setIsAddingCustomVideo] = useState(false);
   const [customVideoForm, setCustomVideoForm] = useState(() => ({
     title: '',
     youtubeUrl: '',
-    subjectId: 'math101',
+    subjectId: defaultVideoSubId,
     unitNumber: 1,
     topicName: '',
     instructor: '',
@@ -104,7 +120,7 @@ export default function VideoLearningView({
   const [playlistForm, setPlaylistForm] = useState(() => ({
     title: '',
     description: '',
-    subjectId: 'math101',
+    subjectId: defaultVideoSubId,
     selectedVideoIds: []
   }));
 
@@ -117,14 +133,67 @@ export default function VideoLearningView({
     return [...VIDEO_LESSONS, ...customVideos];
   }, [customVideos]);
 
+  // Dynamic subject categories from active curriculum + foundational tracks
+  const categories = useMemo(() => {
+    const list = [
+      { id: 'all', label: 'All Curated Lectures', code: 'ALL', count: allVideos.length }
+    ];
+
+    // 1. Add active curriculum subjects
+    activeCurriculumSubjects.forEach((sub) => {
+      const matchCount = allVideos.filter((v) => {
+        if (v.subjectId === sub.id) return true;
+        if (v.subjectCode && sub.code && v.subjectCode.replace(/\s+/g, '').toLowerCase() === sub.code.replace(/\s+/g, '').toLowerCase()) return true;
+        const subTitle = (sub.shortName || sub.title || '').toLowerCase();
+        const vidTitle = (v.subjectTitle || v.title || '').toLowerCase();
+        return subTitle.length > 4 && vidTitle.includes(subTitle);
+      }).length;
+
+      list.push({
+        id: sub.id,
+        label: sub.shortName || sub.title,
+        code: sub.code,
+        count: matchCount,
+        subject: sub,
+        isCurriculum: true
+      });
+    });
+
+    // 2. Add remaining foundational categories (NPTEL, Math, Python, etc.) if not already present
+    const normalizeCode = (c) => (c || '').replace(/\s+/g, '').toUpperCase();
+    const addedIds = new Set(list.map((c) => c.id));
+    const addedCodes = new Set(list.map((c) => normalizeCode(c.code)).filter(Boolean));
+
+    VIDEO_SUBJECT_CATEGORIES.forEach((baseCat) => {
+      const normCatCode = normalizeCode(baseCat.code);
+      const isAlreadyCoveredByCode = Boolean(normCatCode && addedCodes.has(normCatCode));
+      const isAlreadyCoveredById = addedIds.has(baseCat.id);
+
+      if (baseCat.id !== 'all' && !isAlreadyCoveredById && !isAlreadyCoveredByCode) {
+        const count = allVideos.filter((v) => v.subjectId === baseCat.id).length;
+        if (count > 0) {
+          list.push({
+            ...baseCat,
+            count,
+            isCurriculum: false
+          });
+          addedIds.add(baseCat.id);
+          if (normCatCode) addedCodes.add(normCatCode);
+        }
+      }
+    });
+
+    return list;
+  }, [allVideos, activeCurriculumSubjects]);
+
   // Dynamic category counts
   const categoryCounts = useMemo(() => {
-    const counts = { all: allVideos.length };
-    allVideos.forEach((v) => {
-      counts[v.subjectId] = (counts[v.subjectId] || 0) + 1;
+    const counts = {};
+    categories.forEach((cat) => {
+      counts[cat.id] = cat.count;
     });
     return counts;
-  }, [allVideos]);
+  }, [categories]);
 
   // Total Progress Metrics
   const totalVideos = allVideos.length;
@@ -136,8 +205,21 @@ export default function VideoLearningView({
   const filteredVideos = useMemo(() => {
     const list = allVideos.filter((vid) => {
       // 1. Subject Filter
-      if (selectedSubjectFilter !== 'all' && vid.subjectId !== selectedSubjectFilter) {
-        return false;
+      if (selectedSubjectFilter !== 'all') {
+        const selectedCat = categories.find((c) => c.id === selectedSubjectFilter);
+        const matchesId = vid.subjectId === selectedSubjectFilter;
+        const matchesCode = Boolean(
+          selectedCat?.code &&
+          vid.subjectCode &&
+          vid.subjectCode.replace(/\s+/g, '').toLowerCase() === selectedCat.code.replace(/\s+/g, '').toLowerCase()
+        );
+        const matchesTitle = Boolean(
+          selectedCat?.label &&
+          (vid.subjectTitle || '').toLowerCase().includes(selectedCat.label.toLowerCase())
+        );
+        if (!matchesId && !matchesCode && !matchesTitle) {
+          return false;
+        }
       }
       // 2. Difficulty Filter
       if (selectedDifficulty !== 'all' && vid.level !== selectedDifficulty) {
@@ -173,7 +255,7 @@ export default function VideoLearningView({
       return [...list].sort((a, b) => (b.durationSeconds || 600) - (a.durationSeconds || 600));
     }
     return list; // default curated order
-  }, [allVideos, selectedSubjectFilter, selectedDifficulty, selectedSort, searchQuery]);
+  }, [allVideos, selectedSubjectFilter, selectedDifficulty, selectedSort, searchQuery, categories]);
 
   // Group videos by subject and unit for organized hierarchical browsing
   const groupedVideosByUnit = useMemo(() => {
@@ -286,7 +368,7 @@ export default function VideoLearningView({
       return;
     }
 
-    const matchedSub = VIDEO_SUBJECT_CATEGORIES.find((c) => c.id === customVideoForm.subjectId);
+    const matchedSub = categories.find((c) => c.id === customVideoForm.subjectId);
 
     const newVideo = {
       id: `custom-vid-${Date.now()}`,
@@ -320,7 +402,7 @@ export default function VideoLearningView({
     setCustomVideoForm({
       title: '',
       youtubeUrl: '',
-      subjectId: 'math101',
+      subjectId: activeCurriculumSubjects[0]?.id || 'math101',
       unitNumber: 1,
       topicName: '',
       instructor: '',
@@ -339,7 +421,7 @@ export default function VideoLearningView({
       return;
     }
 
-    const matchedSub = VIDEO_SUBJECT_CATEGORIES.find((c) => c.id === playlistForm.subjectId);
+    const matchedSub = categories.find((c) => c.id === playlistForm.subjectId);
 
     const newPlaylist = {
       id: `pl-custom-${Date.now()}`,
@@ -357,7 +439,7 @@ export default function VideoLearningView({
     setPlaylistForm({
       title: '',
       description: '',
-      subjectId: 'math101',
+      subjectId: activeCurriculumSubjects[0]?.id || 'math101',
       selectedVideoIds: []
     });
   };
@@ -960,7 +1042,7 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
               <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--forest-950)', marginRight: '4px' }}>
                 Course:
               </span>
-              {VIDEO_SUBJECT_CATEGORIES.map((cat) => {
+              {categories.map((cat) => {
                 const isSelected = selectedSubjectFilter === cat.id;
                 const count = categoryCounts[cat.id] || 0;
                 return (
@@ -1046,7 +1128,7 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
                     value={customVideoForm.subjectId}
                     onChange={(e) => setCustomVideoForm({ ...customVideoForm, subjectId: e.target.value })}
                   >
-                    {VIDEO_SUBJECT_CATEGORIES.filter((c) => c.id !== 'all').map((c) => (
+                    {categories.filter((c) => c.id !== 'all').map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.code} - {c.label}
                       </option>
@@ -1142,7 +1224,7 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
           )}
 
           {/* Engineering Physics NPTEL 122107035 Curriculum Banner */}
-          {selectedSubjectFilter === 'phy101' && (
+          {(selectedSubjectFilter === 'phy101' || categories.find((c) => c.id === selectedSubjectFilter)?.code?.replace(/\s+/g, '').toUpperCase() === 'PHY101') && (
             <div
               style={{
                 marginBottom: '16px',
@@ -1228,7 +1310,7 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
           )}
 
           {/* Engineering Mathematics Curriculum Banner */}
-          {selectedSubjectFilter === 'math101' && (
+          {(selectedSubjectFilter === 'math101' || categories.find((c) => c.id === selectedSubjectFilter)?.code?.replace(/\s+/g, '').toUpperCase() === 'MATH101') && (
             <div
               style={{
                 marginBottom: '16px',
@@ -1441,22 +1523,41 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
             <div className="analytics-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
               <IconVideo size={36} style={{ color: 'var(--sage-400)', margin: '0 auto 12px' }} />
               <h3 style={{ fontSize: '17px', fontWeight: 700, color: 'var(--forest-950)', margin: '0 0 6px' }}>
-                No lectures found for this filter
+                {selectedSubjectFilter !== 'all'
+                  ? `No video lectures linked to ${categories.find((c) => c.id === selectedSubjectFilter)?.label || 'this course'} yet`
+                  : 'No lectures found for this filter'}
               </h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '0 0 16px' }}>
-                Try adjusting your search query, or add a custom verified YouTube lecture URL.
+              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '0 0 16px', maxWidth: '480px', marginInline: 'auto' }}>
+                {selectedSubjectFilter !== 'all'
+                  ? 'Add your professor\'s or university\'s YouTube lecture links to this course, or explore open repositories like NPTEL and MIT OCW.'
+                  : 'Try adjusting your search query, or add a custom verified YouTube lecture URL.'}
               </p>
-              <button
-                type="button"
-                className="sem2-action-btn"
-                onClick={() => {
-                  setSelectedSubjectFilter('all');
-                  setSelectedDifficulty('all');
-                  setSearchQuery('');
-                }}
-              >
-                Reset All Filters
-              </button>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                {selectedSubjectFilter !== 'all' && (
+                  <button
+                    type="button"
+                    className="add-task-btn"
+                    onClick={() => {
+                      setCustomVideoForm((prev) => ({ ...prev, subjectId: selectedSubjectFilter }));
+                      setIsAddingCustomVideo(true);
+                    }}
+                  >
+                    <IconPlus size={14} />
+                    <span>Add Video to this Course</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="sem2-action-btn"
+                  onClick={() => {
+                    setSelectedSubjectFilter('all');
+                    setSelectedDifficulty('all');
+                    setSearchQuery('');
+                  }}
+                >
+                  View All Curated Lectures
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1531,7 +1632,7 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
                     value={playlistForm.subjectId}
                     onChange={(e) => setPlaylistForm({ ...playlistForm, subjectId: e.target.value })}
                   >
-                    {VIDEO_SUBJECT_CATEGORIES.filter((c) => c.id !== 'all').map((c) => (
+                    {categories.filter((c) => c.id !== 'all').map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.code} - {c.label}
                       </option>
@@ -1923,11 +2024,11 @@ Explain the pedagogical reasoning and highlight key formulas to watch out for.`
             </div>
 
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-              The next recommended foundational lecture for each of your 7 Semester 1 courses:
+              The next recommended foundational lecture for your {profile?.branch || 'engineering'} courses:
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {VIDEO_SUBJECT_CATEGORIES.filter((c) => c.id !== 'all').map((cat) => {
+              {categories.filter((c) => c.id !== 'all').map((cat) => {
                 const subVideos = allVideos.filter((v) => v.subjectId === cat.id);
                 const nextUnwatched = subVideos.find((v) => !completedVideoIds.includes(v.id)) || subVideos[0];
                 if (!nextUnwatched) return null;
